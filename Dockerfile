@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     pkg-config \
     cmake \
-    libsentecepiece-dev \
+    libsentencepiece-dev \
     # Clean up apt lists to reduce image size
     && rm -rf /var/lib/apt/lists/*
 
