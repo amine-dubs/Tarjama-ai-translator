@@ -5,11 +5,8 @@ from fastapi.templating import Jinja2Templates
 from typing import List, Optional
 import shutil
 import os
-import traceback
-
-# Placeholder for translation logic
-# Use specific AutoClasses for clarity and potentially better loading
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import pipeline, MarianMTModel, MarianTokenizer
+import traceback # Ensure traceback is imported
 
 # --- Configuration ---
 # Determine the base directory of the main.py script
@@ -40,10 +37,12 @@ translator = None # Initialize translator as None
 
 try:
     print("--- Loading Model ---") # Add a clear marker
-    print(f"Loading tokenizer for {MODEL_NAME}...")
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    print(f"Loading model for {MODEL_NAME}...")
-    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+    print(f"Loading tokenizer for {MODEL_NAME} using MarianTokenizer...")
+    # Use MarianTokenizer directly
+    tokenizer = MarianTokenizer.from_pretrained(MODEL_NAME)
+    print(f"Loading model for {MODEL_NAME} using MarianMTModel...")
+    # Use MarianMTModel directly
+    model = MarianMTModel.from_pretrained(MODEL_NAME)
     print(f"Initializing translation pipeline for {MODEL_NAME}...")
     # Pass the loaded objects to the pipeline
     translator = pipeline("translation", model=model, tokenizer=tokenizer)
