@@ -9,7 +9,8 @@ WORKDIR /app
 # This ensures the container has write permissions for downloading models/tokenizers
 RUN mkdir -p /app/.cache
 ENV HF_HOME=/app/.cache
-ENV TRANSFORMERS_CACHE=/app/.cache # Also set TRANSFORMERS_CACHE for good measure
+# Also set TRANSFORMERS_CACHE for good measure
+ENV TRANSFORMERS_CACHE=/app/.cache
 
 # Copy the requirements file into the container at /app
 # Copy only requirements first to leverage Docker layer caching
