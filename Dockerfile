@@ -5,9 +5,10 @@ FROM python:3.13-alpine
 # All subsequent commands (COPY, RUN, CMD) use this path
 WORKDIR /app
 
-# Install system dependencies that might be needed by Python packages on Alpine
-# Example for PyMuPDF: RUN apk add --no-cache musl-dev freetype-dev harfbuzz-dev jpeg-dev openjpeg-dev zlib-dev tiff-dev lcms2-dev
-# RUN apk add --no-cache some-alpine-package
+# Install system dependencies including Rust and build tools
+RUN apk add --no-cache cargo build-base
+# Example for PyMuPDF (uncomment if needed, might require different packages on Alpine 3.13+):
+# RUN apk add --no-cache mujs-dev freetype-dev harfbuzz-dev jpeg-dev openjpeg-dev zlib-dev tiff-dev lcms2-dev
 
 # Copy only the requirements file first to leverage Docker cache
 COPY backend/requirements.txt /app/requirements.txt
