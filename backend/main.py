@@ -2,12 +2,13 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import os
 from typing import List, Optional
 import shutil
+import os
+import traceback
 
 # Placeholder for translation logic
-# from transformers import pipeline # Uncomment when implementing translation
+from transformers import pipeline # Uncomment when implementing translation
 
 # --- Configuration ---
 # Determine the base directory of the main.py script
@@ -16,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Adjust paths to go one level up from backend to find templates/static
 TEMPLATE_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
 STATIC_DIR = os.path.join(os.path.dirname(BASE_DIR), "static")
-UPLOAD_DIR = os.path.join(os.path.dirname(BASE_DIR), "uploads") # Place uploads outside backend
+UPLOAD_DIR = "/app/uploads" # Ensure this matches Dockerfile WORKDIR + uploads
 
 app = FastAPI()
 
@@ -31,93 +32,120 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 # --- Placeholder for Model Loading ---
 # Initialize the translation pipeline (load the model)
 # Consider loading the model on startup to avoid delays during requests
-# translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-ar") # Example model
+translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-ar") # Example model
 
 # --- Helper Functions ---
 def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar") -> str:
     """Internal function to handle text translation using the loaded model."""
-    # Refined Prompt based on user request
-    prompt = f"""Translate the following text from {source_lang} to Arabic (Modern Standard Arabic - Fusha) precisely. Do not provide a literal translation; focus on conveying the meaning accurately while respecting Arabic eloquence (balagha) by rephrasing if necessary:
+    if translator is None:
+        # If the model failed to load, raise an error instead of returning a placeholder
+        raise HTTPException(status_code=503, detail="Translation service is unavailable (model not loaded).")
 
-{text}"""
+    # Log the request details
+    print(f"Translation Request - Source Lang: {source_lang}, Target Lang: {target_lang}")
+    print(f"Input Text: {text}")
 
     # --- Actual Translation Logic (using Hugging Face pipeline) ---
-    # This part needs to be implemented based on the chosen model's API
-    # Example using a generic pipeline (replace with actual model call):
-    # try:
-    #     # Note: Standard pipelines might not directly support complex prompts like this.
-    #     # You might need custom model loading and generation logic.
-    #     # result = translator(prompt, src_lang=source_lang, tgt_lang=target_lang) # Adjust based on model
-    #     # translated_text = result[0]['translation_text']
-    #     # --- Placeholder ---
-    #     print(f"Simulating translation for prompt: {prompt}") # Log the prompt being used
-    #     translated_text = f"Translated: {text} (from {source_lang} to {target_lang})" # Replace with actual translation
-    #     return translated_text
-    # except Exception as e:
-    #     print(f"Error during translation: {e}")
-    #     raise HTTPException(status_code=500, detail=f"Translation failed: {e}")
-    # --- End Placeholder ---
-
-    # --- Simplified Placeholder ---
-    print(f"Using Prompt: {prompt}")
-    # Simulate translation for now
-    return f"[Simulated Translation of '{text}' from {source_lang} to MSA Arabic, focusing on meaning and eloquence]"
-    # --- End Simplified Placeholder ---
-
-
-def extract_text_from_file(file_path: str, file_type: str) -> str:
-    """Extracts text from various document types."""
-    text = ""
     try:
-        if file_type == "application/pdf":
-            import fitz  # PyMuPDF
-            with fitz.open(file_path) as doc:
-                for page in doc:
-                    text += page.get_text()
-        elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            from docx import Document
-            doc = Document(file_path)
-            for para in doc.paragraphs:
-                text += para.text + "\n"
-        elif file_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-            import openpyxl
-            workbook = openpyxl.load_workbook(file_path)
-            for sheet_name in workbook.sheetnames:
-                sheet = workbook[sheet_name]
-                for row in sheet.iter_rows():
-                    for cell in row:
-                        if cell.value:
-                            text += str(cell.value) + " "
-                    text += "\n" # Newline after each row
-        elif file_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-            from pptx import Presentation
-            prs = Presentation(file_path)
-            for slide in prs.slides:
-                for shape in slide.shapes:
-                    if hasattr(shape, "text"):
-                        text += shape.text + "\n"
-        # Add handling for plain text files
-        elif file_type.startswith("text/"):
-             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                 text = f.read()
+        # The Helsinki model expects the text directly
+        result = translator(text)
+
+        if result and isinstance(result, list) and 'translation_text' in result[0]:
+            translated_text = result[0]['translation_text']
+            print(f"Raw Translation Output: {translated_text}")
+            # Return the actual translated text
+            return translated_text
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}. Cannot extract text.")
+            print(f"Unexpected translation result format: {result}")
+            raise HTTPException(status_code=500, detail="Translation failed: Unexpected model output format.")
 
-    except ImportError as ie:
-         print(f"Import error for {file_type}: {ie}. Make sure the required library is installed.")
-         # Ensure temp file is cleaned up even if import fails
-         if os.path.exists(file_path):
-             os.remove(file_path)
-         raise HTTPException(status_code=501, detail=f"Text extraction for {file_type} requires an additional library: {ie.name}. Please install it (check requirements.txt). The file was not processed.")
     except Exception as e:
-        print(f"Error extracting text from {file_path} ({file_type}): {e}")
-        # Ensure temp file is cleaned up on extraction error
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        raise HTTPException(status_code=500, detail=f"Failed to extract text from file: {e}")
+        print(f"Error during translation pipeline: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Translation failed: {e}")
 
-    # Do not remove the file here; let the calling function handle cleanup after translation
-    return text
+# --- Function to extract text ---
+async def extract_text_from_file(file: UploadFile) -> str:
+    """Extracts text content from various file types."""
+    # Ensure upload directory exists (though Dockerfile should create it)
+    # Use os.makedirs for robustness
+    os.makedirs(UPLOAD_DIR, exist_ok=True) # Ensure directory exists
+
+    # Secure filename and define path
+    # Use a temporary filename to avoid collisions and complex sanitization
+    # Make sure the filename is safe for the filesystem
+    safe_filename = os.path.basename(file.filename) # Basic safety
+    temp_file_path = os.path.join(UPLOAD_DIR, f"temp_{safe_filename}")
+    print(f"Attempting to save uploaded file to: {temp_file_path}")
+    extracted_text = "" # Initialize extracted_text
+
+    try:
+        # Save the uploaded file temporarily
+        # Use async file writing if possible with a library like aiofiles,
+        # but standard file I/O is often sufficient here.
+        with open(temp_file_path, "wb") as buffer:
+            content = await file.read() # Read content
+            buffer.write(content) # Write to file
+        print(f"File saved successfully to: {temp_file_path}")
+
+        # Determine file type and extract text
+        file_extension = os.path.splitext(safe_filename)[1].lower()
+
+        if file_extension == '.txt':
+            with open(temp_file_path, 'r', encoding='utf-8') as f:
+                extracted_text = f.read()
+        elif file_extension == '.docx':
+            try:
+                import docx
+                doc = docx.Document(temp_file_path)
+                extracted_text = '\\n'.join([para.text for para in doc.paragraphs])
+            except ImportError:
+                raise HTTPException(status_code=501, detail="DOCX processing requires 'python-docx' library, which is not installed.")
+            except Exception as e:
+                 raise HTTPException(status_code=500, detail=f"Error reading DOCX file: {e}")
+        elif file_extension == '.pdf':
+            try:
+                import fitz # PyMuPDF
+                doc = fitz.open(temp_file_path)
+                extracted_text = ""
+                for page in doc:
+                    extracted_text += page.get_text()
+                doc.close()
+            except ImportError:
+                 raise HTTPException(status_code=501, detail="PDF processing requires 'PyMuPDF' library, which is not installed.")
+            except Exception as e:
+                 raise HTTPException(status_code=500, detail=f"Error reading PDF file: {e}")
+        # Add support for other types (pptx, xlsx) similarly if needed
+        # elif file_extension == '.pptx': ...
+        # elif file_extension == '.xlsx': ...
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_extension}")
+
+        print(f"Extracted text length: {len(extracted_text)}")
+        return extracted_text # Return the extracted text
+
+    except IOError as e:
+        print(f"IOError saving/reading file {temp_file_path}: {e}")
+        # Check permissions specifically
+        if e.errno == 13: # Permission denied
+             raise HTTPException(status_code=500, detail=f"Permission denied writing to {temp_file_path}. Check container permissions for {UPLOAD_DIR}.")
+        raise HTTPException(status_code=500, detail=f"Error saving/accessing uploaded file: {e}")
+    except HTTPException as e:
+        # Re-raise HTTPExceptions directly
+        raise e
+    except Exception as e:
+        print(f"Error processing file {file.filename}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred processing the document: {e}")
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                print(f"Temporary file removed: {temp_file_path}")
+            except OSError as e:
+                # Log error but don't crash the request if cleanup fails
+                print(f"Error removing temporary file {temp_file_path}: {e}")
 
 # --- API Endpoints ---
 @app.get("/", response_class=HTMLResponse)
@@ -194,7 +222,7 @@ async def translate_document_endpoint(
             shutil.copyfileobj(file.file, buffer)
 
         # Extract text based on content type
-        extracted_text = extract_text_from_file(temp_file_path, file.content_type)
+        extracted_text = await extract_text_from_file(file)
         # Note: extract_text_from_file now raises HTTPException on errors or unsupported types
 
         if not extracted_text:

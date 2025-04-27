@@ -30,6 +30,9 @@ COPY static/ /app/static
 # Create the necessary directories within the container that the app expects
 RUN mkdir -p /app/templates /app/static /app/uploads
 
+# Grant write permissions to the uploads directory
+RUN chmod -R 777 /app/uploads
+
 # Make port 8000 available
 EXPOSE 8000
 
