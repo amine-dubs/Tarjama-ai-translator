@@ -36,21 +36,23 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 # Define model name
 MODEL_NAME = "Helsinki-NLP/opus-mt-en-ar"
+translator = None # Initialize translator as None
 
 try:
+    print("--- Loading Model ---") # Add a clear marker
     print(f"Loading tokenizer for {MODEL_NAME}...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     print(f"Loading model for {MODEL_NAME}...")
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
     print(f"Initializing translation pipeline for {MODEL_NAME}...")
+    # Pass the loaded objects to the pipeline
     translator = pipeline("translation", model=model, tokenizer=tokenizer)
-    print("Translation pipeline initialized successfully.")
+    print("--- Model Loaded Successfully ---")
 except Exception as e:
+    print(f"--- ERROR Loading Model ---")
     print(f"Error loading model or tokenizer {MODEL_NAME}: {e}")
-    # Set translator to None or raise a startup error if critical
-    translator = None
-    # Optionally, re-raise to prevent the app from starting incorrectly
-    # raise RuntimeError(f"Failed to load translation model: {e}") from e
+    traceback.print_exc() # Print full traceback for loading error
+    # Keep translator as None
 
 # --- Helper Functions ---
 def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar") -> str:
