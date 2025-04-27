@@ -8,7 +8,8 @@ import os
 import traceback
 
 # Placeholder for translation logic
-from transformers import pipeline # Uncomment when implementing translation
+# Use specific AutoClasses for clarity and potentially better loading
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 
 # --- Configuration ---
 # Determine the base directory of the main.py script
@@ -32,7 +33,24 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 # --- Placeholder for Model Loading ---
 # Initialize the translation pipeline (load the model)
 # Consider loading the model on startup to avoid delays during requests
-translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-ar") # Example model
+
+# Define model name
+MODEL_NAME = "Helsinki-NLP/opus-mt-en-ar"
+
+try:
+    print(f"Loading tokenizer for {MODEL_NAME}...")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    print(f"Loading model for {MODEL_NAME}...")
+    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+    print(f"Initializing translation pipeline for {MODEL_NAME}...")
+    translator = pipeline("translation", model=model, tokenizer=tokenizer)
+    print("Translation pipeline initialized successfully.")
+except Exception as e:
+    print(f"Error loading model or tokenizer {MODEL_NAME}: {e}")
+    # Set translator to None or raise a startup error if critical
+    translator = None
+    # Optionally, re-raise to prevent the app from starting incorrectly
+    # raise RuntimeError(f"Failed to load translation model: {e}") from e
 
 # --- Helper Functions ---
 def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar") -> str:
