@@ -4,6 +4,7 @@ emoji: 📊
 colorFrom: pink
 colorTo: purple
 sdk: docker
+app_port: 8000 # Added required port for Docker SDK
 pinned: false
 ---
 
