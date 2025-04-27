@@ -7,5 +7,5 @@ python-docx
 openpyxl
 python-pptx
 PyMuPDF
-sentencepiece # Often needed for tokenizers
+# sentencepiece - Removed explicit dependency to avoid Alpine build issues (still installed via transformers)
 sacremoses # Often needed for translation models
