@@ -1,0 +1,124 @@
+# Deployment Guide: AI Translator on Hugging Face Spaces (Docker)
+
+This guide outlines the steps to deploy the AI Translator web application to Hugging Face (HF) Spaces using Docker.
+
+## Prerequisites
+
+1.  **Docker:** Ensure Docker Desktop (or Docker Engine on Linux) is installed and running on your local machine.
+2.  **Git & Git LFS:** Install Git and Git Large File Storage (LFS) if you plan to use large model files directly in your repository (though it's often better to load them dynamically). Install LFS with `git lfs install`.
+3.  **Hugging Face Account:** You need an account on [huggingface.co](https://huggingface.co/).
+4.  **Hugging Face CLI (Optional but Recommended):** Install the HF command-line interface for easier repository management:
+    ```bash
+    pip install -U huggingface_hub
+    # Login to your account
+    huggingface-cli login
+    ```
+
+## Steps
+
+1.  **Create a Hugging Face Repository:**
+    *   Go to [huggingface.co](https://huggingface.co/) and create a new "Space".
+    *   Give it a name (e.g., `your-username/ai-translator`).
+    *   Select "Docker" as the Space SDK.
+    *   Choose "Public" or "Private" visibility.
+    *   Click "Create Space".
+
+2.  **Prepare Your Local Repository:**
+    *   Make sure your project directory is a Git repository. If not, initialize it:
+        ```bash
+        git init
+        ```
+    *   Create a `.gitignore` file to exclude virtual environments, `uploads`, `__pycache__`, etc. (A basic example is provided below).
+    *   **Crucially**, create a `README.md` file *at the root of your project* (or edit the existing one created by HF) with the following metadata block at the top:
+        ```markdown
+        ---
+        title: AI Translator
+        emoji: 🌍
+        colorFrom: blue
+        colorTo: green
+        sdk: docker
+        app_port: 8000 # Must match the port EXPOSEd in Dockerfile and run by uvicorn
+        # Optional: Specify hardware requirements if needed (default is free CPU)
+        # hardware: cpu-basic # cpu-upgrade, t4-small, t4-medium, a10g-small, etc.
+        # Optional: Add secrets if your app needs API keys (e.g., HF_TOKEN)
+        # secrets:
+        #   - HF_TOKEN
+        ---
+
+        # AI Translator
+
+        This Space hosts an AI-powered web application for translating text and documents to/from Arabic.
+        Built with FastAPI, Docker, and Hugging Face Transformers.
+        ```
+        *   **Important:** Ensure `app_port` matches the port exposed in your `backend/Dockerfile` (which is `8000` in the current setup).
+
+3.  **Clone the HF Space Repository (Optional but Recommended):**
+    *   Cloning ensures you have the correct remote configured. Go to your Space page on HF, click the "Files and versions" tab, then the "Clone repository" button to get the command.
+    *   ```bash
+        # Example:
+        git clone https://huggingface.co/spaces/your-username/ai-translator
+        cd ai-translator
+        ```
+    *   Copy your project files (`backend/`, `static/`, `templates/`, `Dockerfile` at the root, `README.md`, `.gitignore`, etc.) into this cloned directory. *Make sure the `Dockerfile` is at the root level if HF expects it there, or adjust paths in the Dockerfile if it stays in `backend/`.* **Correction:** The current `Dockerfile` assumes it's run from the project root and copies files like `backend/requirements.txt`. Let's keep the `Dockerfile` in the `backend/` directory as initially created and adjust the `README.md` if needed, or adjust the Dockerfile copy paths. *Let's assume the `Dockerfile` stays in `backend/` for now, as created.*
+
+4.  **Add and Commit Files:**
+    *   Stage all your project files:
+        ```bash
+        git add .
+        ```
+    *   Commit the changes:
+        ```bash
+        git commit -m "Initial commit of AI Translator application"
+        ```
+
+5.  **Push to Hugging Face:**
+    *   If you cloned the repository, the remote (`origin`) should already be set.
+    *   If you initialized Git locally, add the HF Space remote:
+        ```bash
+        git remote add origin https://huggingface.co/spaces/your-username/ai-translator
+        ```
+    *   Push your code to the `main` branch on Hugging Face:
+        ```bash
+        git push origin main
+        ```
+
+6.  **Monitor Build Process:**
+    *   Go back to your Space page on Hugging Face.
+    *   The Space will automatically start building the Docker image based on your `backend/Dockerfile`. You can monitor the build logs.
+    *   If the build is successful, the application container will start.
+    *   Any errors during the build (e.g., missing dependencies, Dockerfile syntax errors) or runtime errors (e.g., Python code errors, model loading issues) will appear in the logs.
+
+7.  **Access Your Application:**
+    *   Once the status shows "Running", your application should be accessible at the Space URL (e.g., `https://your-username-ai-translator.hf.space`).
+
+## Basic `.gitignore` Example
+
+Create a file named `.gitignore` in the project root:
+
+```gitignore
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*build*/
+*dist*/
+*.egg-info/
+venv/
+env/
+.env
+*.env.*
+
+# Uploads
+uploads/
+
+# IDE / OS specific
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Local secrets (if any)
+secrets.yaml
+*.credential
+```

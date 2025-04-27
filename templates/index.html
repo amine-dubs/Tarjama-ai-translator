@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr"> <!- Default to LTR, can be changed dynamically ->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Translator</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>AI Translation Service</h1>
+
+    <div class="container">
+        <h2>Direct Text Translation</h2>
+        <form id="text-translation-form">
+            <div class="input-group">
+                <label for="source-lang-text">Source Language:</label>
+                <select id="source-lang-text" name="source_lang">
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                    <option value="es">Spanish</option>
+                    <option value="de">German</option>
+                    <option value="ar">Arabic</option> <!- Added Arabic as source ->
+                    <option value="auto">Auto-Detect (Not implemented)</option>
+                    <!- Add more languages as needed ->
+                </select>
+            </div>
+            <div class="input-group">
+                 <label for="target-lang-text">Target Language:</label>
+                 <select id="target-lang-text" name="target_lang">
+                     <option value="ar">Arabic (MSA Fusha)</option>
+                     <!- Add other target languages if reverse translation is implemented ->
+                     <!- <option value="en">English</option> ->
+                 </select>
+            </div>
+            <textarea id="text-input" name="text" placeholder="Enter text to translate..."></textarea>
+            <button type="submit">Translate Text</button>
+        </form>
+        <div id="text-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
+            <h3>Translation:</h3>
+            <pre><code id="text-output"></code></pre>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Document Translation</h2>
+        <form id="doc-translation-form" enctype="multipart/form-data">
+            <div class="input-group">
+                <label for="source-lang-doc">Source Language:</label>
+                <select id="source-lang-doc" name="source_lang">
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                    <option value="es">Spanish</option>
+                    <option value="de">German</option>
+                     <option value="ar">Arabic</option> <!- Added Arabic as source ->
+                    <option value="auto">Auto-Detect (Not implemented)</option>
+                    <!- Add more languages as needed ->
+                </select>
+            </div>
+             <div class="input-group">
+                 <label for="target-lang-doc">Target Language:</label>
+                 <select id="target-lang-doc" name="target_lang">
+                     <option value="ar">Arabic (MSA Fusha)</option>
+                      <!- Add other target languages if reverse translation is implemented ->
+                     <!- <option value="en">English</option> ->
+                 </select>
+            </div>
+            <div class="input-group">
+                <label for="doc-input">Upload Document (.pdf, .docx, .xlsx, .pptx, .txt):</label>
+                <input type="file" id="doc-input" name="file" accept=".pdf,.docx,.xlsx,.pptx,.txt">
+            </div>
+            <button type="submit">Translate Document</button>
+        </form>
+        <div id="doc-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
+            <h3>Translation:</h3>
+            <p>Original Filename: <span id="doc-filename"></span></p>
+            <p>Detected Source Language: <span id="doc-source-lang"></span></p>
+            <pre><code id="doc-output"></code></pre>
+        </div>
+    </div>
+
+    <div id="error-message" class="error-box" style="display: none;"></div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

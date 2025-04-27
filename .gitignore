@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*build*/
+*dist*/
+*.egg-info/
+venv/
+.venv/
+env/
+.env
+*.env.*
+
+# Uploads
+uploads/
+
+# IDE / OS specific
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Local secrets (if any)
+secrets.yaml
+*.credential
