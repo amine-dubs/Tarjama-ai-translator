@@ -3,4 +3,5 @@ uvicorn
 python-docx
 PyMuPDF
 transformers[torch]
-sentencepiece # Added for MarianTokenizer
+sentencepiece
+python-multipart # Added for FastAPI form data handling
