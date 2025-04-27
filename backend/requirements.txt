@@ -1,11 +1,6 @@
 fastapi
-uvicorn[standard]
-python-multipart
-transformers[torch]
-# Add specific document parsing libraries later if needed, e.g.:
+uvicorn
 python-docx
-openpyxl
-python-pptx
 PyMuPDF
-# sentencepiece - Removed explicit dependency to avoid Alpine build issues (still installed via transformers)
-sacremoses # Often needed for translation models
+transformers[torch]
+sentencepiece # Added for MarianTokenizer
