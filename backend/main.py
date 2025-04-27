@@ -33,16 +33,17 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 # Define model name
 MODEL_NAME = "Helsinki-NLP/opus-mt-en-ar"
+CACHE_DIR = "/app/.cache" # Explicitly define cache directory
 translator = None # Initialize translator as None
 
 try:
     print("--- Loading Model ---") # Add a clear marker
     print(f"Loading tokenizer for {MODEL_NAME} using MarianTokenizer...")
-    # Use MarianTokenizer directly
-    tokenizer = MarianTokenizer.from_pretrained(MODEL_NAME)
+    # Use MarianTokenizer directly and specify cache_dir
+    tokenizer = MarianTokenizer.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
     print(f"Loading model for {MODEL_NAME} using MarianMTModel...")
-    # Use MarianMTModel directly
-    model = MarianMTModel.from_pretrained(MODEL_NAME)
+    # Use MarianMTModel directly and specify cache_dir
+    model = MarianMTModel.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
     print(f"Initializing translation pipeline for {MODEL_NAME}...")
     # Pass the loaded objects to the pipeline
     translator = pipeline("translation", model=model, tokenizer=tokenizer)
