@@ -5,12 +5,16 @@ FROM python:3.13-alpine
 # All subsequent commands (COPY, RUN, CMD) use this path
 WORKDIR /app
 
-# Install system dependencies including Rust, build tools, pkgconfig, and cmake
-# sentencepiece-dev is not available in Alpine 3.21 repos, removed it.
-# The sentencepiece python package will compile from source.
-RUN apk add --no-cache cargo build-base pkgconfig cmake
-# Example for PyMuPDF (uncomment if needed, might require different packages on Alpine 3.13+):
-# RUN apk add --no-cache mujs-dev freetype-dev harfbuzz-dev jpeg-dev openjpeg-dev zlib-dev tiff-dev lcms2-dev
+# Install system dependencies including Rust, build tools, pkg-config, cmake, and sentencepiece dev libs using apt-get
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    rustc \
+    cargo \
+    build-essential \
+    pkg-config \
+    cmake \
+    libsentecepiece-dev \
+    # Clean up apt lists to reduce image size
+    && rm -rf /var/lib/apt/lists/*
 
 # Set PKG_CONFIG_PATH to help find sentencepiece.pc
 ENV PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig
