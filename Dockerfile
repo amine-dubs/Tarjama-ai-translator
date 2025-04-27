@@ -5,8 +5,8 @@ FROM python:3.13-alpine
 # All subsequent commands (COPY, RUN, CMD) use this path
 WORKDIR /app
 
-# Install system dependencies including Rust, build tools, pkgconfig, and cmake
-RUN apk add --no-cache cargo build-base pkgconfig cmake
+# Install system dependencies including Rust, build tools, pkgconfig, cmake, and sentencepiece dev libs
+RUN apk add --no-cache cargo build-base pkgconfig cmake sentencepiece-dev
 # Example for PyMuPDF (uncomment if needed, might require different packages on Alpine 3.13+):
 # RUN apk add --no-cache mujs-dev freetype-dev harfbuzz-dev jpeg-dev openjpeg-dev zlib-dev tiff-dev lcms2-dev
 
