@@ -10,6 +10,9 @@ RUN apk add --no-cache cargo build-base pkgconfig cmake sentencepiece-dev
 # Example for PyMuPDF (uncomment if needed, might require different packages on Alpine 3.13+):
 # RUN apk add --no-cache mujs-dev freetype-dev harfbuzz-dev jpeg-dev openjpeg-dev zlib-dev tiff-dev lcms2-dev
 
+# Set PKG_CONFIG_PATH to help find sentencepiece.pc
+ENV PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig
+
 # Copy only the requirements file first to leverage Docker cache
 COPY backend/requirements.txt /app/requirements.txt
 
