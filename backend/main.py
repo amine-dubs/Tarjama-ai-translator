@@ -63,20 +63,22 @@ def initialize_model():
         # Use a smaller model that works well for instruction-based translation
         model_name = "google/flan-t5-small"
         
-        # Load the model and tokenizer with explicit cache directory
+        # Load the tokenizer with explicit cache directory
         tokenizer = AutoTokenizer.from_pretrained(
             model_name, 
             cache_dir="/tmp/transformers_cache"
         )
         
         # Create a pipeline for text2text generation
+        # Important: Add from_tf=True to load TensorFlow weights
         translator = pipeline(
             "text2text-generation",
             model=model_name,
             tokenizer=tokenizer,
             device=-1,  # Use CPU for compatibility (-1) or GPU if available (0)
             cache_dir="/tmp/transformers_cache",
-            max_length=512
+            max_length=512,
+            model_kwargs={"from_tf": True}  # This is the key fix
         )
         
         print(f"Model {model_name} successfully initialized")
