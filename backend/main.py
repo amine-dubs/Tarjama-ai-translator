@@ -70,22 +70,41 @@ def initialize_model():
             cache_dir="/tmp/transformers_cache"
         )
         
-        # Check if TensorFlow is available
+        # Check if TensorFlow and tf-keras are available
         tf_available = False
         try:
             import tensorflow
-            tf_available = True
+            # Try to import tf_keras which is the compatibility package
+            try:
+                import tf_keras
+                print("tf-keras is installed, using TensorFlow with compatibility layer")
+                tf_available = True
+            except ImportError:
+                print("tf-keras not found, will try to use PyTorch backend")
             print("TensorFlow is available, will use from_tf=True")
         except ImportError:
             print("TensorFlow is not installed, will use default PyTorch loading")
         
         # Load the model with appropriate settings based on TensorFlow availability
         print(f"Loading model {'with from_tf=True' if tf_available else 'with default PyTorch settings'}...")
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_name,
-            from_tf=tf_available,  # Only set True if TensorFlow is available
-            cache_dir="/tmp/transformers_cache"
-        )
+        try:
+            # First try with PyTorch approach which is more reliable
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                model_name,
+                from_tf=False,  # Use PyTorch first
+                cache_dir="/tmp/transformers_cache"
+            )
+        except Exception as e:
+            print(f"PyTorch loading failed: {e}")
+            if tf_available:
+                print("Attempting to load with TensorFlow...")
+                model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_name,
+                    from_tf=True,
+                    cache_dir="/tmp/transformers_cache"
+                )
+            else:
+                raise  # Re-raise if we can't use TensorFlow either
         
         # Create a pipeline with the loaded model and tokenizer
         print("Creating pipeline with pre-loaded model...")
