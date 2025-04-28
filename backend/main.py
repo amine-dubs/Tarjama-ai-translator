@@ -9,6 +9,10 @@ import json
 import traceback
 import io
 
+# Import transformers for local model inference
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+import torch
+
 # --- Configuration ---
 # Determine the base directory of the main.py script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,18 +41,58 @@ LANGUAGE_MAP = {
     "it": "Italian"
 }
 
-# --- Free translation APIs ---
-LIBRE_TRANSLATE_ENDPOINTS = [
-    "https://translate.terraprint.co/translate",
-    "https://libretranslate.de/translate",
-    "https://translate.argosopentech.com/translate"
-]
+# --- Set cache directory to a writeable location ---
+# This is crucial for Hugging Face Spaces where /app/.cache is not writable
+# Using /tmp which is typically writable in most environments
+os.environ['TRANSFORMERS_CACHE'] = '/tmp/transformers_cache'
+os.environ['HF_HOME'] = '/tmp/hf_home'
+os.environ['XDG_CACHE_HOME'] = '/tmp/cache'
+
+# --- Global model and tokenizer variables ---
+translator = None
+tokenizer = None
+
+# --- Model initialization function ---
+def initialize_model():
+    """Initialize the translation model and tokenizer."""
+    global translator, tokenizer
+    
+    try:
+        print("Initializing model and tokenizer...")
+        
+        # Use a smaller model that works well for instruction-based translation
+        model_name = "google/flan-t5-small"
+        
+        # Load the model and tokenizer with explicit cache directory
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name, 
+            cache_dir="/tmp/transformers_cache"
+        )
+        
+        # Create a pipeline for text2text generation
+        translator = pipeline(
+            "text2text-generation",
+            model=model_name,
+            tokenizer=tokenizer,
+            device=-1,  # Use CPU for compatibility (-1) or GPU if available (0)
+            cache_dir="/tmp/transformers_cache",
+            max_length=512
+        )
+        
+        print(f"Model {model_name} successfully initialized")
+        return True
+    except Exception as e:
+        print(f"Error initializing model: {e}")
+        traceback.print_exc()
+        return False
 
 # --- Translation Function ---
 def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar") -> str:
     """
-    Translate text using Hugging Face Inference API and LibreTranslate as backup
+    Translate text using local T5 model with prompt engineering
     """
+    global translator
+    
     if not text.strip():
         return ""
         
@@ -57,8 +101,15 @@ def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar"
     # Get full language name for prompt
     source_lang_name = LANGUAGE_MAP.get(source_lang, source_lang)
     
-    # Construct our eloquent Arabic translation prompt
-    prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
+    # Initialize the model if it hasn't been loaded yet
+    if translator is None:
+        success = initialize_model()
+        if not success:
+            return fallback_translate(text, source_lang, target_lang)
+    
+    try:
+        # Construct our eloquent Arabic translation prompt
+        prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
 Focus on conveying the meaning elegantly using proper Balagha (Arabic eloquence).
 Adapt any cultural references or idioms appropriately rather than translating literally.
 Ensure the translation reads naturally to a native Arabic speaker.
@@ -66,62 +117,34 @@ Ensure the translation reads naturally to a native Arabic speaker.
 Text to translate:
 {text}"""
 
-    # Try Hugging Face Inference API with models that are reliably available on the free tier
-    hf_models = [
-        "facebook/m2m100_418M",  # Very reliable multilingual model
-        "Helsinki-NLP/opus-mt-tc-big-en-ar"  # Good for English to Arabic
+        # Generate translation using the model
+        outputs = translator(prompt, max_length=512, do_sample=False)
+        
+        if outputs and len(outputs) > 0:
+            translated_text = outputs[0]['generated_text']
+            print(f"Translation successful using transformers model")
+            return culturally_adapt_arabic(translated_text)
+        else:
+            print("Model returned empty output")
+            return fallback_translate(text, source_lang, target_lang)
+            
+    except Exception as e:
+        print(f"Error in model translation: {e}")
+        traceback.print_exc()
+        return fallback_translate(text, source_lang, target_lang)
+
+def fallback_translate(text: str, source_lang: str, target_lang: str = "ar") -> str:
+    """Fallback to online translation APIs if local model fails."""
+    # Try LibreTranslate
+    libre_translate_endpoints = [
+        "https://translate.terraprint.co/translate",
+        "https://libretranslate.de/translate",
+        "https://translate.argosopentech.com/translate"
     ]
     
-    for model in hf_models:
+    for endpoint in libre_translate_endpoints:
         try:
-            print(f"Attempting translation via Hugging Face Inference API: {model}")
-            api_url = f"https://api-inference.huggingface.co/models/{model}"
-            
-            # Different payloads based on model architecture
-            if "m2m" in model:
-                payload = {
-                    "inputs": text,
-                    "parameters": {
-                        "src_lang": source_lang.upper() if source_lang != "zh" else "ZH",
-                        "tgt_lang": "AR" 
-                    }
-                }
-            elif "opus-mt" in model:
-                payload = {"inputs": text}
-            else:
-                payload = {"inputs": prompt}
-            
-            # No auth header for public models on free tier
-            response = requests.post(api_url, json=payload, timeout=30)
-            
-            if response.status_code == 200:
-                result = response.json()
-                translated_text = None
-                
-                # Extract text from various response formats
-                if isinstance(result, list) and len(result) > 0:
-                    if isinstance(result[0], dict):
-                        translated_text = result[0].get("translation_text") or result[0].get("generated_text")
-                    else:
-                        translated_text = str(result[0])
-                elif isinstance(result, dict):
-                    translated_text = result.get("translation_text") or result.get("generated_text")
-                
-                if translated_text:
-                    print(f"Translation successful using {model}")
-                    return culturally_adapt_arabic(translated_text)
-                
-                print(f"Unexpected response format: {response.text}")
-            else:
-                print(f"API error: {response.status_code}")
-        
-        except Exception as e:
-            print(f"Error with Hugging Face model {model}: {e}")
-    
-    # If Hugging Face fails, try LibreTranslate
-    for endpoint in LIBRE_TRANSLATE_ENDPOINTS:
-        try:
-            print(f"Attempting translation using LibreTranslate: {endpoint}")
+            print(f"Attempting fallback translation using LibreTranslate: {endpoint}")
             payload = {
                 "q": text,
                 "source": source_lang if source_lang != "auto" else "auto",
