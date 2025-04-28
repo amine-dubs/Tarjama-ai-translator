@@ -64,7 +64,7 @@ This report details the development process of an AI-powered web application des
     *   **Description:** Uploads a document, extracts its text, and translates it.
     *   **Request Body (Multipart Form Data):**
         *   `file` (UploadFile): The document file (.pdf, .docx, .xlsx, .pptx, .txt).
-        *   `source_lang` (str): The source language code.
+        *   `source_lang` (str):
         *   `target_lang` (str): The target language code (currently fixed to 'ar').
     *   **Response (`JSONResponse`):**
         *   `original_filename` (str): The name of the uploaded file.
@@ -101,46 +101,106 @@ Key Python libraries used:
 7.  **Document Backend Processing:** FastAPI receives the file, saves it temporarily, extracts text using appropriate libraries (PyMuPDF, python-docx, etc.), calls the internal translation function, cleans up the temporary file, and returns the result.
 8.  **Response Handling:** Frontend JS receives the JSON response and updates the UI to display the translation or an error message.
 
-## 4. Prompt Engineering and Optimization
+## 4. Prompt Engineering and Translation Quality Control
 
-### 4.1. Initial Prompt Design
+### 4.1. Desired Translation Characteristics
 
-The core requirement is to translate *from* a source language *to* Arabic (MSA Fusha) with a focus on meaning and eloquence (Balagha), avoiding overly literal translations.
+The core requirement is to translate *from* a source language *to* Arabic (MSA Fusha) with a focus on meaning and eloquence (Balagha), avoiding overly literal translations. These goals typically fall under the umbrella of prompt engineering when using general large language models.
 
-The initial prompt structure designed for the `translate_text_internal` function is:
+### 4.2. Approach with Instruction-Tuned LLM (FLAN-T5)
 
+Due to persistent loading issues with the specialized `Helsinki-NLP` model and the desire to have more direct control over the translation process, the project switched to using `google/flan-t5-small`, an instruction-tuned language model.
+
+#### 4.2.1 Explicit Prompt Engineering
+
+The translation process uses carefully crafted prompts to guide the model toward high-quality Arabic translations. The `translate_text_internal` function in `main.py` constructs an enhanced prompt with the following components:
+
+```python
+prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
+Focus on conveying the meaning elegantly using proper Balagha (Arabic eloquence).
+Adapt any cultural references or idioms appropriately rather than translating literally.
+Ensure the translation reads naturally to a native Arabic speaker.
+
+Text to translate:
+{text}"""
 ```
-Translate the following text from {source_lang} to Arabic (Modern Standard Arabic - Fusha) precisely. Do not provide a literal translation; focus on conveying the meaning accurately while respecting Arabic eloquence (balagha) by rephrasing if necessary:
 
-{text}
+This prompt explicitly instructs the model to:
+- Use Modern Standard Arabic (Fusha) as the target language register
+- Emphasize eloquence (Balagha) in the translation style
+- Handle cultural references and idioms appropriately for an Arabic audience
+- Prioritize natural-sounding output over literal translation
+
+#### 4.2.2 Multi-Language Support
+
+The system supports multiple source languages through a language mapping system that converts ISO language codes to full language names for better model comprehension:
+
+```python
+language_map = {
+    "en": "English",
+    "fr": "French",
+    "es": "Spanish",
+    "de": "German",
+    "zh": "Chinese",
+    "ru": "Russian",
+    "ja": "Japanese",
+    "hi": "Hindi",
+    "pt": "Portuguese",
+    "tr": "Turkish",
+    "ko": "Korean",
+    "it": "Italian"
+    # Additional languages can be added as needed
+}
 ```
 
-### 4.2. Rationale
+Using full language names in the prompt (e.g., "Translate the following French text...") helps the model better understand the translation task compared to using language codes.
 
-*   **Explicit Target:** Specifies "Arabic (Modern Standard Arabic - Fusha)" to guide the model towards the desired dialect and register.
-*   **Precision Instruction:** "precisely" encourages accuracy.
-*   **Constraint against Literal Translation:** "Do not provide a literal translation" directly addresses a potential pitfall.
-*   **Focus on Meaning:** "focus on conveying the meaning accurately" sets the primary goal.
-*   **Eloquence (Balagha):** "respecting Arabic eloquence (balagha)" introduces the key stylistic requirement.
-*   **Mechanism:** "by rephrasing if necessary" suggests *how* to achieve non-literal translation and eloquence.
-*   **Clear Input:** `{text}` placeholder clearly separates the instruction from the input text.
-*   **Source Language Context:** `{source_lang}` provides context, which can be crucial for disambiguation.
+#### 4.2.3 Generation Parameter Optimization
 
-### 4.3. Testing and Refinement (Planned/Hypothetical)
+To further improve translation quality, the model's generation parameters have been fine-tuned:
 
-*(This section would be filled in after actual model integration and testing)*
+```python
+outputs = model.generate(
+    **inputs,
+    max_length=512,     # Sufficient length for most translations
+    num_beams=5,        # Wider beam search for better quality
+    length_penalty=1.0, # Slightly favor longer, more complete translations
+    top_k=50,           # Consider diverse word choices
+    top_p=0.95,         # Focus on high-probability tokens for coherence
+    early_stopping=True
+)
+```
 
-*   **Model Selection:** The choice of model (e.g., a fine-tuned NLLB model, AraT5, or a large multilingual model like Qwen or Llama adapted for translation) will significantly impact performance. Initial tests would involve selecting a candidate model from Hugging Face Hub known for strong multilingual or English-Arabic capabilities.
-*   **Baseline Test:** Translate sample sentences/paragraphs using the initial prompt and evaluate the output quality based on accuracy, fluency, and adherence to Balagha principles.
-*   **Prompt Variations:**
-    *   *Simpler Prompts:* Test shorter prompts (e.g., "Translate to eloquent MSA Arabic: {text}") to see if the model can infer the constraints.
-    *   *More Explicit Examples (Few-Shot):* If needed, add examples within the prompt (though this increases complexity and token count): "Translate ... Example: 'Hello world' -> 'مرحباً بالعالم' (eloquent). Input: {text}"
-    *   *Emphasis:* Use different phrasing or emphasis (e.g., "Prioritize conveying the core meaning over word-for-word translation.")
-*   **Parameter Tuning:** Experiment with model generation parameters (e.g., `temperature`, `top_k`, `num_beams` if using beam search) available through the `transformers` pipeline or `generate` method to influence output style and creativity.
-*   **Evaluation Metrics:**
-    *   *Human Evaluation:* Subjective assessment by Arabic speakers focusing on accuracy, naturalness, and eloquence.
-    *   *Automated Metrics (with caution):* BLEU, METEOR scores against reference translations (if available), primarily for tracking relative improvements during iteration, acknowledging their limitations for stylistic nuances like Balagha.
-*   **Final Prompt Justification:** Based on the tests, the prompt that consistently produces the best balance of accurate meaning and desired Arabic style will be chosen. The current prompt is a strong starting point based on explicitly stating all requirements.
+These parameters work together to encourage:
+- More natural-sounding translations through beam search
+- Better handling of nuanced expressions
+- Appropriate length for preserving meaning
+- Balance between creativity and accuracy
+
+### 4.3. Testing and Refinement Process
+
+*   **Prompt Iteration:** The core refinement process involves testing different prompt phrasings with various text samples across supported languages. Each iteration aims to improve the model's understanding of:
+    - What constitutes eloquent Arabic (Balagha)
+    - How to properly adapt culturally-specific references
+    - When to prioritize meaning over literal translation
+    
+*   **Cultural Sensitivity Testing:** Sample texts containing culturally-specific references, idioms, and metaphors from each supported language are used to evaluate how well the model adapts these elements for an Arabic audience.
+
+*   **Evaluation Metrics:** 
+    *   *Human Evaluation:* Native Arabic speakers assess translations for:
+        - Eloquence (Balagha): Does the translation use appropriately eloquent Arabic?
+        - Cultural Adaptation: Are cultural references appropriately handled?
+        - Naturalness: Does the text sound natural to native speakers?
+        - Accuracy: Is the meaning preserved despite non-literal translation?
+    
+    *   *Automated Metrics:* While useful as supplementary measures, metrics like BLEU are used with caution as they tend to favor more literal translations.
+
+*   **Model Limitations:** The current implementation with FLAN-T5-small shows promise but has limitations:
+    - It may struggle with very specialized technical content
+    - Some cultural nuances from less common language pairs may be missed
+    - Longer texts may lose coherence across paragraphs
+    
+    Future work may explore larger model variants if these limitations prove significant.
 
 ## 5. Frontend Design and User Experience
 
@@ -221,6 +281,11 @@ Translate the following text from {source_lang} to Arabic (Modern Standard Arabi
 *   **Optimize Performance:** Profile the application and optimize bottlenecks, potentially exploring model quantization or different model architectures if needed.
 *   **Add More Document Types:** Support additional formats if required.
 *   **Testing:** Implement unit and integration tests for backend logic.
+
+## Project Log / Updates
+
+*   **2025-04-28:** Updated project requirements to explicitly include the need for the translation model to respect cultural differences and nuances in its output.
+*   **2025-04-28:** Switched translation model from `Helsinki-NLP/opus-mt-en-ar` to `google/flan-t5-small` due to persistent loading errors in the deployment environment and to enable direct prompt engineering for translation tasks.
 
 ## 8. Conclusion
 

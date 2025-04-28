@@ -2,6 +2,21 @@
 
 This guide outlines the steps to deploy the AI Translator web application to Hugging Face (HF) Spaces using Docker.
 
+## Application Features
+
+1. **Eloquent Arabic Translation:** The application focuses on producing high-quality Arabic translations that prioritize meaning and eloquence (Balagha) over literal translations.
+2. **Cultural Sensitivity:** Translations adapt cultural references and idioms appropriately for the target audience.
+3. **Multi-Language Support:** Translation from 12 languages (English, French, Spanish, German, Chinese, Russian, Japanese, Hindi, Portuguese, Turkish, Korean, Italian) to Modern Standard Arabic.
+4. **Document Processing:** Support for translating text from various document formats (PDF, DOCX, TXT).
+5. **Advanced Prompt Engineering:** Uses carefully designed prompts with the FLAN-T5 model to achieve eloquent, culturally-aware translations.
+
+## Translation Model Details
+
+* **Model:** `google/flan-t5-small` - An instruction-tuned language model capable of following specific translation directions
+* **Prompt Approach:** Uses explicit instructions to guide the model toward eloquent Arabic (Balagha) and cultural adaptation
+* **Generation Parameters:** Optimized beam search, length penalty, and sampling parameters for higher quality output
+* **Scalability:** The small model variant balances quality with reasonable resource requirements for deployment
+
 ## Prerequisites
 
 1.  **Docker:** Ensure Docker Desktop (or Docker Engine on Linux) is installed and running on your local machine.
@@ -48,6 +63,7 @@ This guide outlines the steps to deploy the AI Translator web application to Hug
         # AI Translator
 
         This Space hosts an AI-powered web application for translating text and documents to/from Arabic.
+        The goal is to provide accurate and fluent translations that also respect cultural nuances and differences.
         Built with FastAPI, Docker, and Hugging Face Transformers.
         ```
         *   **Important:** Ensure `app_port` matches the port exposed in your `backend/Dockerfile` (which is `8000` in the current setup).

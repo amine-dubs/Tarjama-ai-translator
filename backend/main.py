@@ -5,7 +5,9 @@ from fastapi.templating import Jinja2Templates
 from typing import List, Optional
 import shutil
 import os
-from transformers import pipeline, MarianMTModel, MarianTokenizer
+# Use AutoModel for flexibility
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch # Ensure torch is imported if using generate directly
 import traceback # Ensure traceback is imported
 
 # --- Configuration ---
@@ -27,62 +29,96 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Ensure the templates directory exists (FastAPI doesn't create it)
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
-# --- Placeholder for Model Loading ---
-# Initialize the translation pipeline (load the model)
-# Consider loading the model on startup to avoid delays during requests
+# --- Model Loading ---
 
-# Define model name
-MODEL_NAME = "Helsinki-NLP/opus-mt-en-ar"
+# Define model name - Switched to FLAN-T5
+MODEL_NAME = "google/flan-t5-small"
 CACHE_DIR = "/app/.cache" # Explicitly define cache directory
-translator = None # Initialize translator as None
+model = None
+tokenizer = None
 
 try:
-    print("--- Loading Model ---") # Add a clear marker
-    print(f"Loading tokenizer for {MODEL_NAME} using MarianTokenizer...")
-    # Use MarianTokenizer directly and specify cache_dir
-    tokenizer = MarianTokenizer.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
-    print(f"Loading model for {MODEL_NAME} using MarianMTModel...")
-    # Use MarianMTModel directly and specify cache_dir
-    model = MarianMTModel.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
-    print(f"Initializing translation pipeline for {MODEL_NAME}...")
-    # Pass the loaded objects to the pipeline
-    translator = pipeline("translation", model=model, tokenizer=tokenizer)
+    print("--- Loading Model ---")
+    print(f"Loading tokenizer for {MODEL_NAME} using AutoTokenizer...")
+    # Use AutoTokenizer and specify cache_dir
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
+    print(f"Loading model for {MODEL_NAME} using AutoModelForSeq2SeqLM...")
+    # Use AutoModelForSeq2SeqLM and specify cache_dir
+    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
     print("--- Model Loaded Successfully ---")
 except Exception as e:
     print(f"--- ERROR Loading Model ---")
     print(f"Error loading model or tokenizer {MODEL_NAME}: {e}")
     traceback.print_exc() # Print full traceback for loading error
-    # Keep translator as None
+    # Keep model and tokenizer as None
 
 # --- Helper Functions ---
 def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar") -> str:
-    """Internal function to handle text translation using the loaded model."""
-    if translator is None:
-        # If the model failed to load, raise an error instead of returning a placeholder
+    """Internal function to handle text translation using the loaded model via prompting."""
+    if model is None or tokenizer is None:
+        # If the model/tokenizer failed to load, raise an error
         raise HTTPException(status_code=503, detail="Translation service is unavailable (model not loaded).")
 
-    # Log the request details
-    print(f"Translation Request - Source Lang: {source_lang}, Target Lang: {target_lang}")
-    print(f"Input Text: {text}")
+    # --- Enhanced Prompt Engineering --- 
+    # Map source language codes to full language names for better model understanding
+    language_map = {
+        "en": "English",
+        "fr": "French",
+        "es": "Spanish",
+        "de": "German",
+        "zh": "Chinese",
+        "ru": "Russian",
+        "ja": "Japanese",
+        "hi": "Hindi",
+        "pt": "Portuguese",
+        "tr": "Turkish",
+        "ko": "Korean",
+        "it": "Italian"
+        # Add more languages as needed
+    }
+    
+    # Get the full language name, or use the code if not in our map
+    source_lang_name = language_map.get(source_lang, source_lang)
+    
+    # Craft a more detailed prompt that emphasizes meaning over literal translation
+    # and focuses on eloquence and cultural sensitivity
+    prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
+Focus on conveying the meaning elegantly using proper Balagha (Arabic eloquence).
+Adapt any cultural references or idioms appropriately rather than translating literally.
+Ensure the translation reads naturally to a native Arabic speaker.
 
-    # --- Actual Translation Logic (using Hugging Face pipeline) ---
+Text to translate:
+{text}"""
+    
+    print(f"Translation Request - Source Lang: {source_lang} ({source_lang_name}), Target Lang: {target_lang}")
+    print(f"Using Enhanced Prompt for Balagha and Cultural Sensitivity")
+
+    # --- Actual Translation Logic (using model.generate) ---
     try:
-        # The Helsinki model expects the text directly
-        result = translator(text)
+        # Tokenize the prompt
+        inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
 
-        if result and isinstance(result, list) and 'translation_text' in result[0]:
-            translated_text = result[0]['translation_text']
-            print(f"Raw Translation Output: {translated_text}")
-            # Return the actual translated text
-            return translated_text
-        else:
-            print(f"Unexpected translation result format: {result}")
-            raise HTTPException(status_code=500, detail="Translation failed: Unexpected model output format.")
+        # Generate the translation with parameters tuned for quality
+        outputs = model.generate(
+            **inputs,
+            max_length=512,  # Adjust based on expected output length
+            num_beams=5,     # Increased for better quality
+            length_penalty=1.0, # Encourage slightly longer outputs for natural flow
+            top_k=50,        # More diverse word choices
+            top_p=0.95,      # Sample from higher probability tokens for fluency
+            early_stopping=True
+        )
+
+        # Decode the generated tokens
+        translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        print(f"Raw Translation Output: {translated_text}")
+        return translated_text
 
     except Exception as e:
-        print(f"Error during translation pipeline: {e}")
+        print(f"Error during model generation: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Translation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed during generation: {e}")
 
 # --- Function to extract text ---
 async def extract_text_from_file(file: UploadFile) -> str:
