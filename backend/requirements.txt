@@ -2,7 +2,5 @@ fastapi
 uvicorn
 python-docx
 PyMuPDF
-transformers[torch]
-sentencepiece
+requests
 python-multipart
-requests # Added for LibreTranslate API fallback
