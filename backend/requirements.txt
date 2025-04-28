@@ -4,3 +4,4 @@ python-docx
 PyMuPDF
 requests
 python-multipart
+jinja2
