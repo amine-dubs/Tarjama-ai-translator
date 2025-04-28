@@ -4,182 +4,57 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import List, Optional
 import shutil
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, MarianMTModel, MarianTokenizer
-import torch
-import traceback
-import time  # For retries
 import os
-import requests # For direct API access as final fallback
+import requests
+import json
+import traceback
+import time
 
 # --- Configuration ---
 # Determine the base directory of the main.py script
-# This helps in locating templates and static files correctly, especially in Docker
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Adjust paths to go one level up from backend to find templates/static
 TEMPLATE_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
 STATIC_DIR = os.path.join(os.path.dirname(BASE_DIR), "static")
-UPLOAD_DIR = "/app/uploads" # Ensure this matches Dockerfile WORKDIR + uploads
+UPLOAD_DIR = "/app/uploads"  # Ensure this matches Dockerfile WORKDIR + uploads
+
+# LibreTranslate API URLs - trying multiple endpoints in case one is down
+TRANSLATION_APIS = [
+    "https://translate.terraprint.co/translate",  # Primary endpoint
+    "https://libretranslate.de/translate",        # Backup endpoint 1
+    "https://translate.argosopentech.com/translate" # Backup endpoint 2
+]
 
 app = FastAPI()
 
 # --- Mount Static Files and Templates ---
-# Ensure the static directory exists (FastAPI doesn't create it)
-# We'll create it manually or via Docker later
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# Ensure the templates directory exists (FastAPI doesn't create it)
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
-# --- Model Loading Strategy ---
-# Define model options in order of preference
-MODEL_OPTIONS = [
-    {"name": "google/flan-t5-small", "type": "flan-t5"},
-    {"name": "Helsinki-NLP/opus-mt-en-ar", "type": "marian"},
-    {"name": "t5-small", "type": "t5-fallback"}  # Smaller, more commonly available model
-]
-
-CACHE_DIR = "/app/.cache"
-model = None
-tokenizer = None
-
-# Set environment variables for cache locations
-os.environ["TRANSFORMERS_CACHE"] = CACHE_DIR
-os.environ["HF_HOME"] = CACHE_DIR
-print(f"Cache directories set to: {CACHE_DIR}")
-print(f"Environment TRANSFORMERS_CACHE: {os.environ.get('TRANSFORMERS_CACHE')}")
-print(f"Environment HF_HOME: {os.environ.get('HF_HOME')}")
-
-# Create cache directory with explicit permissions
-try:
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    # Ensure the cache directory is writeable - set permissive permissions
-    os.chmod(CACHE_DIR, 0o777)  # Read/write/execute for all
-    print(f"Cache directory {CACHE_DIR} created with full permissions")
-except Exception as e:
-    print(f"Warning: Could not set permissions on cache dir: {e}")
-
-# Try each model in order until one loads successfully
-for model_option in MODEL_OPTIONS:
-    MODEL_NAME = model_option["name"]
-    MODEL_TYPE = model_option["type"]
-    
-    print(f"--- Attempting to load model: {MODEL_NAME} (Type: {MODEL_TYPE}) ---")
-    
-    # Try to load with retries
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            if MODEL_TYPE == "flan-t5" or MODEL_TYPE == "t5-fallback":
-                print(f"Loading with AutoTokenizer/AutoModelForSeq2SeqLM (Attempt {attempt+1}/{max_retries})")
-                tokenizer = AutoTokenizer.from_pretrained(
-                    MODEL_NAME, 
-                    cache_dir=CACHE_DIR,
-                    local_files_only=False,  # Force online download
-                    resume_download=True     # Resume if download was interrupted
-                )
-                
-                model = AutoModelForSeq2SeqLM.from_pretrained(
-                    MODEL_NAME, 
-                    cache_dir=CACHE_DIR,
-                    local_files_only=False,  # Force online download
-                    resume_download=True     # Resume if download was interrupted
-                )
-            elif MODEL_TYPE == "marian":
-                print(f"Loading with MarianTokenizer/MarianMTModel (Attempt {attempt+1}/{max_retries})")
-                tokenizer = MarianTokenizer.from_pretrained(
-                    MODEL_NAME, 
-                    cache_dir=CACHE_DIR,
-                    local_files_only=False,
-                    resume_download=True
-                )
-                
-                model = MarianMTModel.from_pretrained(
-                    MODEL_NAME, 
-                    cache_dir=CACHE_DIR,
-                    local_files_only=False,
-                    resume_download=True
-                )
-            
-            print(f"--- Successfully loaded model: {MODEL_NAME} ---")
-            break  # Break out of retry loop if successful
-            
-        except Exception as e:
-            print(f"Error loading model {MODEL_NAME} (Attempt {attempt+1}): {e}")
-            traceback.print_exc()
-            
-            if attempt < max_retries - 1:
-                wait_time = 2 * (attempt + 1)  # Exponential backoff
-                print(f"Waiting {wait_time} seconds before retry...")
-                time.sleep(wait_time)
-            else:
-                print(f"Failed to load model {MODEL_NAME} after {max_retries} attempts.")
-    
-    if model is not None and tokenizer is not None:
-        # If we successfully loaded a model, break out of the model options loop
-        break
-
-# --- Fallback Translation Logic ---
-# If we couldn't load any model, we'll set up a simple fallback system
-
-# Define a simple dictionary for common phrases (just as a last resort)
+# --- Fallback dictionary for common phrases ---
 FALLBACK_PHRASES = {
     "hello": "مرحبا",
     "thank you": "شكرا لك",
     "goodbye": "مع السلامة",
     "welcome": "أهلا وسهلا",
+    "yes": "نعم",
+    "no": "لا",
+    "please": "من فضلك",
+    "sorry": "آسف",
 }
 
-def fallback_translate(text, source_lang):
-    """Last resort fallback translation if all models fail to load."""
-    print("Using emergency fallback translation (very limited capability)")
-    
-    # For longer text, try direct API call to a free translation service
-    try:
-        # Try to use LibreTranslate API as fallback (no API key needed for some instances)
-        url = "https://translate.terraprint.co/translate"
-        
-        payload = {
-            "q": text,
-            "source": source_lang if source_lang != "auto" else "auto",
-            "target": "ar",
-            "format": "text"
-        }
-        
-        headers = {"Content-Type": "application/json"}
-        
-        print("Attempting LibreTranslate API call...")
-        response = requests.post(url, json=payload, headers=headers)
-        
-        if response.status_code == 200:
-            result = response.json()
-            print("LibreTranslate API call successful")
-            return result.get("translatedText", f"[Translation Error: {response.text}]")
-    
-    except Exception as e:
-        print(f"LibreTranslate API call failed: {e}")
-    
-    # If that fails too, use our minimal dictionary
-    if text.lower() in FALLBACK_PHRASES:
-        return FALLBACK_PHRASES[text.lower()]
-    
-    # For unknown text, return a message in Arabic explaining the issue
-    return "عذراً، لم نتمكن من تحميل نموذج الترجمة. هذه ترجمة محدودة جداً."  # "Sorry, we couldn't load the translation model. This is a very limited translation."
-
-# --- Helper Functions ---
+# --- Translation Function ---
 def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar") -> str:
-    """Internal function to handle text translation using the loaded model or fallbacks."""
+    """
+    Translate text using LibreTranslate API with fallbacks and cultural adaptation.
+    """
+    print(f"Translation Request - Source Lang: {source_lang}, Target Lang: {target_lang}")
     
-    # Check if we successfully loaded a model
-    if model is None or tokenizer is None:
-        # No model available, use fallback
-        return fallback_translate(text, source_lang)
-    
-    # --- Enhanced Prompt Engineering --- 
-    # Map source language codes to full language names for better model understanding
+    # Map source language codes to full language names
     language_map = {
         "en": "English",
         "fr": "French",
-        "es": "Spanish",
+        "es": "Spanish", 
         "de": "German",
         "zh": "Chinese",
         "ru": "Russian",
@@ -189,74 +64,68 @@ def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar"
         "tr": "Turkish",
         "ko": "Korean",
         "it": "Italian"
-        # Add more languages as needed
     }
     
-    # Get the full language name, or use the code if not in our map
-    source_lang_name = language_map.get(source_lang, source_lang)
+    # For very short text, check our dictionary first
+    if len(text.strip()) < 30 and text.lower().strip() in FALLBACK_PHRASES:
+        return FALLBACK_PHRASES[text.lower().strip()]
     
-    # Craft a more detailed prompt that emphasizes meaning over literal translation
-    # and focuses on eloquence and cultural sensitivity
-    prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
-Focus on conveying the meaning elegantly using proper Balagha (Arabic eloquence).
-Adapt any cultural references or idioms appropriately rather than translating literally.
-Ensure the translation reads naturally to a native Arabic speaker.
-
-Text to translate:
-{text}"""
+    # Try each API endpoint until one works
+    for api_url in TRANSLATION_APIS:
+        try:
+            print(f"Attempting translation using API: {api_url}")
+            
+            # Basic payload for standard translation
+            payload = {
+                "q": text,
+                "source": source_lang if source_lang != "auto" else "auto",
+                "target": target_lang,
+                "format": "text"
+            }
+            
+            headers = {"Content-Type": "application/json"}
+            
+            # Make the API call
+            response = requests.post(api_url, json=payload, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                translated_text = result.get("translatedText")
+                
+                if translated_text:
+                    print(f"Translation successful using {api_url}")
+                    
+                    # For Arabic translations, apply post-processing
+                    if target_lang == "ar":
+                        translated_text = culturally_adapt_arabic(translated_text)
+                    
+                    return translated_text
+                else:
+                    print(f"Translation API returned empty result: {response.text}")
+                    continue  # Try next API
+            else:
+                print(f"Translation API returned error: {response.status_code}")
+                continue  # Try next API
+                
+        except Exception as e:
+            print(f"Error with translation API {api_url}: {e}")
+            continue  # Try next API
     
-    print(f"Translation Request - Source Lang: {source_lang} ({source_lang_name}), Target Lang: {target_lang}")
-    print(f"Using Enhanced Prompt for Balagha and Cultural Sensitivity")
+    # If all APIs failed, use a polite message
+    fallback_text = FALLBACK_PHRASES.get(text.lower().strip()) if len(text.strip()) < 30 else None
+    
+    if fallback_text:
+        return fallback_text
+    else:
+        return "عذراً، لم نتمكن من ترجمة النص. خدمة الترجمة غير متاحة حالياً."
 
-    # --- Model-specific translation logic ---
-    try:
-        if MODEL_TYPE in ["flan-t5", "t5-fallback"]:
-            # Use prompt-based approach for T5 models
-            # Tokenize the prompt
-            inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
+def culturally_adapt_arabic(text: str) -> str:
+    """Apply post-processing rules to enhance Arabic translation with cultural sensitivity."""
+    # Replace any Latin punctuation with Arabic ones
+    text = text.replace('?', '؟').replace(';', '؛').replace(',', '،')
+    return text
 
-            # Generate the translation with parameters tuned for quality
-            outputs = model.generate(
-                **inputs,
-                max_length=512,  # Adjust based on expected output length
-                num_beams=5,     # Increased for better quality
-                length_penalty=1.0, # Encourage slightly longer outputs for natural flow
-                top_k=50,        # More diverse word choices
-                top_p=0.95,      # Sample from higher probability tokens for fluency
-                early_stopping=True
-            )
-
-            # Decode the generated tokens
-            translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-        elif MODEL_TYPE == "marian":
-            # Direct translation for Marian model (specialized for translation)
-            inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
-            
-            outputs = model.generate(
-                **inputs,
-                max_length=512,
-                num_beams=5,
-                length_penalty=1.0,
-                early_stopping=True
-            )
-            
-            translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        else:
-            # Unknown model type, use fallback
-            return fallback_translate(text, source_lang)
-
-        print(f"Raw Translation Output: {translated_text}")
-        return translated_text
-
-    except Exception as e:
-        print(f"Error during model generation: {e}")
-        traceback.print_exc()
-        
-        # If translation fails, use fallback
-        return fallback_translate(text, source_lang)
-
-# --- Function to extract text ---
+# --- Helper Functions ---
 async def extract_text_from_file(file: UploadFile) -> str:
     """Extracts text content from various file types."""
     # Ensure upload directory exists (though Dockerfile should create it)
@@ -381,7 +250,6 @@ async def translate_text_endpoint(
     except Exception as e:
         print(f"Unexpected error in /translate/text: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred during text translation: {e}")
-
 
 @app.post("/translate/document")
 async def translate_document_endpoint(

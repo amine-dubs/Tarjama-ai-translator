@@ -4,4 +4,5 @@ python-docx
 PyMuPDF
 transformers[torch]
 sentencepiece
-python-multipart # Added for FastAPI form data handling
+python-multipart
+requests # Added for LibreTranslate API fallback
