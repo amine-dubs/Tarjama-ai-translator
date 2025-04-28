@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const docFilename = document.getElementById('doc-filename');
     const docSourceLang = document.getElementById('doc-source-lang');
     const errorMessageDiv = document.getElementById('error-message');
+    const docLoadingIndicator = document.getElementById('doc-loading');
 
     // Helper function to display errors
     function displayError(message) {
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
         docOutput.textContent = '';
         docFilename.textContent = '';
         docSourceLang.textContent = '';
+        docLoadingIndicator.style.display = 'none';
     }
 
     // Handle Text Translation Form Submission
@@ -82,6 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         button.disabled = true;
         button.textContent = 'Translating...';
+        // Show loading indicator
+        docLoadingIndicator.style.display = 'block';
 
         try {
             const response = await fetch('/translate/document', {
@@ -95,12 +99,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const result = await response.json();
+            console.log('Document translation response:', result); // Added debug logging
+            
+            // Check if result contains the expected fields
+            if (!result.translated_text) {
+                throw new Error('Translation response is missing translated text');
+            }
+            
             docFilename.textContent = result.original_filename || 'N/A';
             docSourceLang.textContent = result.detected_source_lang || 'N/A';
             docOutput.textContent = result.translated_text;
             docResultBox.style.display = 'block';
-            // Optionally update language direction based on result if needed
-            // docResultBox.dir = result.target_lang === 'ar' ? 'rtl' : 'ltr';
 
         } catch (error) {
             console.error('Document translation error:', error);
@@ -108,6 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             button.disabled = false;
             button.textContent = 'Translate Document';
+            // Hide loading indicator
+            docLoadingIndicator.style.display = 'none';
         }
     });
 });

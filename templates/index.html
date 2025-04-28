@@ -68,7 +68,15 @@
                 <label for="doc-input">Upload Document (.pdf, .docx, .xlsx, .pptx, .txt):</label>
                 <input type="file" id="doc-input" name="file" accept=".pdf,.docx,.xlsx,.pptx,.txt">
             </div>
-            <button type="submit">Translate Document</button>
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">Translate Document</button>
+            </div>
+            <div id="doc-loading" class="loading-spinner" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <p>Translating document... This may take a few minutes for large files or first-time use.</p>
+            </div>
         </form>
         <div id="doc-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
             <h3>Translation:</h3>
