@@ -51,11 +51,12 @@ os.environ['XDG_CACHE_HOME'] = '/tmp/cache'
 # --- Global model and tokenizer variables ---
 translator = None
 tokenizer = None
+model = None
 
 # --- Model initialization function ---
 def initialize_model():
     """Initialize the translation model and tokenizer."""
-    global translator, tokenizer
+    global translator, tokenizer, model
     
     try:
         print("Initializing model and tokenizer...")
@@ -69,16 +70,22 @@ def initialize_model():
             cache_dir="/tmp/transformers_cache"
         )
         
-        # Create a pipeline for text2text generation
-        # Important: Add from_tf=True to load TensorFlow weights
+        # Load the model explicitly with from_tf=True
+        print("Loading model with from_tf=True...")
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_name,
+            from_tf=True,  # Explicitly set from_tf=True
+            cache_dir="/tmp/transformers_cache"
+        )
+        
+        # Create a pipeline with the loaded model and tokenizer
+        print("Creating pipeline with pre-loaded model...")
         translator = pipeline(
             "text2text-generation",
-            model=model_name,
+            model=model,  # Use the model we loaded with from_tf=True
             tokenizer=tokenizer,
             device=-1,  # Use CPU for compatibility (-1) or GPU if available (0)
-            cache_dir="/tmp/transformers_cache",
-            max_length=512,
-            model_kwargs={"from_tf": True}  # This is the key fix
+            max_length=512
         )
         
         print(f"Model {model_name} successfully initialized")
