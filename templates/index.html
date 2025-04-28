@@ -5,76 +5,190 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Translator</title>
     <link rel="stylesheet" href="/static/style.css">
+    <!-- Add Chart.js for better data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <h1>AI Translation Service</h1>
 
-    <div class="container">
-        <h2>Direct Text Translation</h2>
-        <form id="text-translation-form">
-            <div class="input-group">
-                <label for="source-lang-text">Source Language:</label>
-                <select id="source-lang-text" name="source_lang">
-                    <option value="en">English</option>
-                    <option value="fr">French</option>
-                    <option value="es">Spanish</option>
-                    <option value="de">German</option>
-                    <option value="ar">Arabic</option> <!- Added Arabic as source ->
-                    <option value="auto">Auto-Detect (Not implemented)</option>
-                    <!- Add more languages as needed ->
-                </select>
-            </div>
-            <div class="input-group">
-                 <label for="target-lang-text">Target Language:</label>
-                 <select id="target-lang-text" name="target_lang">
-                     <option value="ar">Arabic (MSA Fusha)</option>
-                     <!- Add other target languages if reverse translation is implemented ->
-                     <!- <option value="en">English</option> ->
-                 </select>
-            </div>
-            <textarea id="text-input" name="text" placeholder="Enter text to translate..."></textarea>
-            <button type="submit">Translate Text</button>
-        </form>
-        <div id="text-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
-            <h3>Translation:</h3>
-            <pre><code id="text-output"></code></pre>
+    <!-- Navigation tabs -->
+    <div class="tab-container">
+        <div class="tabs">
+            <button class="tab-button active" data-tab="text-translation">Text Translation</button>
+            <button class="tab-button" data-tab="doc-translation">Document Translation</button>
+            <button class="tab-button" data-tab="training">Training Dashboard</button>
         </div>
     </div>
 
-    <div class="container">
-        <h2>Document Translation</h2>
-        <form id="doc-translation-form" enctype="multipart/form-data">
-            <div class="input-group">
-                <label for="source-lang-doc">Source Language:</label>
-                <select id="source-lang-doc" name="source_lang">
-                    <option value="en">English</option>
-                    <option value="fr">French</option>
-                    <option value="es">Spanish</option>
-                    <option value="de">German</option>
-                     <option value="ar">Arabic</option> <!- Added Arabic as source ->
-                    <option value="auto">Auto-Detect (Not implemented)</option>
-                    <!- Add more languages as needed ->
-                </select>
+    <div class="tab-content">
+        <!-- Text Translation Tab -->
+        <div id="text-translation" class="tab-pane active">
+            <div class="container">
+                <h2>Direct Text Translation</h2>
+                <form id="text-translation-form">
+                    <div class="input-group">
+                        <label for="source-lang-text">Source Language:</label>
+                        <select id="source-lang-text" name="source_lang">
+                            <option value="en">English</option>
+                            <option value="fr">French</option>
+                            <option value="es">Spanish</option>
+                            <option value="de">German</option>
+                            <option value="ar">Arabic</option> <!- Added Arabic as source ->
+                            <option value="auto">Auto-Detect (Not implemented)</option>
+                            <!- Add more languages as needed ->
+                        </select>
+                    </div>
+                    <div class="input-group">
+                         <label for="target-lang-text">Target Language:</label>
+                         <select id="target-lang-text" name="target_lang">
+                             <option value="ar">Arabic (MSA Fusha)</option>
+                             <!- Add other target languages if reverse translation is implemented ->
+                             <!- <option value="en">English</option> ->
+                         </select>
+                    </div>
+                    <textarea id="text-input" name="text" placeholder="Enter text to translate..."></textarea>
+                    <button type="submit">Translate Text</button>
+                </form>
+                <div id="text-result" class="result-box" dir="rtl">
+                    <h3>Translation:</h3>
+                    <pre><code id="text-output"></code></pre>
+                </div>
             </div>
-             <div class="input-group">
-                 <label for="target-lang-doc">Target Language:</label>
-                 <select id="target-lang-doc" name="target_lang">
-                     <option value="ar">Arabic (MSA Fusha)</option>
-                      <!- Add other target languages if reverse translation is implemented ->
-                     <!- <option value="en">English</option> ->
-                 </select>
+        </div>
+
+        <!-- Document Translation Tab -->
+        <div id="doc-translation" class="tab-pane">
+            <div class="container">
+                <h2>Document Translation</h2>
+                <form id="doc-translation-form" enctype="multipart/form-data">
+                    <div class="input-group">
+                        <label for="source-lang-doc">Source Language:</label>
+                        <select id="source-lang-doc" name="source_lang">
+                            <option value="en">English</option>
+                            <option value="fr">French</option>
+                            <option value="es">Spanish</option>
+                            <option value="de">German</option>
+                             <option value="ar">Arabic</option> <!- Added Arabic as source ->
+                            <option value="auto">Auto-Detect (Not implemented)</option>
+                            <!- Add more languages as needed ->
+                        </select>
+                    </div>
+                     <div class="input-group">
+                         <label for="target-lang-doc">Target Language:</label>
+                         <select id="target-lang-doc" name="target_lang">
+                             <option value="ar">Arabic (MSA Fusha)</option>
+                              <!- Add other target languages if reverse translation is implemented ->
+                             <!- <option value="en">English</option> ->
+                         </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="doc-input">Upload Document (.pdf, .docx, .xlsx, .pptx, .txt):</label>
+                        <input type="file" id="doc-input" name="file" accept=".pdf,.docx,.xlsx,.pptx,.txt">
+                    </div>
+                    <button type="submit">Translate Document</button>
+                </form>
+                <div id="doc-result" class="result-box" dir="rtl">
+                    <h3>Translation:</h3>
+                    <p>Original Filename: <span id="doc-filename"></span></p>
+                    <p>Detected Source Language: <span id="doc-source-lang"></span></p>
+                    <pre><code id="doc-output"></code></pre>
+                </div>
             </div>
-            <div class="input-group">
-                <label for="doc-input">Upload Document (.pdf, .docx, .xlsx, .pptx, .txt):</label>
-                <input type="file" id="doc-input" name="file" accept=".pdf,.docx,.xlsx,.pptx,.txt">
+        </div>
+
+        <!-- Training Dashboard Tab -->
+        <div id="training" class="tab-pane">
+            <div class="container">
+                <h2>Model Training Dashboard</h2>
+                
+                <div class="training-controls">
+                    <div class="input-group">
+                        <label for="training-epochs">Number of Epochs:</label>
+                        <input type="number" id="training-epochs" min="1" max="100" value="10">
+                    </div>
+                    <div class="input-group">
+                        <label for="training-batch-size">Batch Size:</label>
+                        <input type="number" id="training-batch-size" min="1" max="128" value="32">
+                    </div>
+                    <div class="input-group">
+                        <label for="training-learning-rate">Learning Rate:</label>
+                        <input type="number" id="training-learning-rate" min="0.00001" max="0.1" step="0.0001" value="0.001">
+                    </div>
+                    <div class="input-group">
+                        <label for="training-dataset">Training Dataset:</label>
+                        <select id="training-dataset">
+                            <option value="default">Default Dataset</option>
+                            <option value="custom">Custom Dataset</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="custom-dataset-upload" style="display: none;">
+                        <label for="dataset-file">Upload Custom Dataset:</label>
+                        <input type="file" id="dataset-file" accept=".csv,.json,.txt">
+                    </div>
+                    <button id="start-training" class="primary-button">Start Training</button>
+                </div>
+
+                <div class="training-status" style="display: none;">
+                    <div class="progress-container">
+                        <h3>Training Progress</h3>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="training-progress"></div>
+                        </div>
+                        <p>Progress: <span id="progress-percent">0%</span></p>
+                        <p>Epoch: <span id="current-epoch">0</span>/<span id="total-epochs">10</span></p>
+                        <button id="stop-training" class="danger-button">Stop Training</button>
+                    </div>
+                </div>
+
+                <div class="training-metrics">
+                    <h3>Training Metrics</h3>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <h4>Loss</h4>
+                            <div class="chart-container">
+                                <canvas id="loss-chart"></canvas>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <h4>Accuracy</h4>
+                            <div class="chart-container">
+                                <canvas id="accuracy-chart"></canvas>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <h4>BLEU Score</h4>
+                            <div class="chart-container">
+                                <canvas id="bleu-chart"></canvas>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <h4>Learning Rate</h4>
+                            <div class="chart-container">
+                                <canvas id="lr-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="training-history">
+                    <h3>Previous Training Sessions</h3>
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Dataset</th>
+                                <th>Epochs</th>
+                                <th>Final Loss</th>
+                                <th>Final Accuracy</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <!-- Training history will be populated here via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <button type="submit">Translate Document</button>
-        </form>
-        <div id="doc-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
-            <h3>Translation:</h3>
-            <p>Original Filename: <span id="doc-filename"></span></p>
-            <p>Detected Source Language: <span id="doc-source-lang"></span></p>
-            <pre><code id="doc-output"></code></pre>
         </div>
     </div>
 
