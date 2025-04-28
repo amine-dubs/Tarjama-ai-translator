@@ -8,3 +8,4 @@ jinja2
 transformers
 torch
 sentencepiece
+tensorflow

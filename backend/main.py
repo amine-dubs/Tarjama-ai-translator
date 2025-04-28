@@ -70,11 +70,20 @@ def initialize_model():
             cache_dir="/tmp/transformers_cache"
         )
         
-        # Load the model explicitly with from_tf=True
-        print("Loading model with from_tf=True...")
+        # Check if TensorFlow is available
+        tf_available = False
+        try:
+            import tensorflow
+            tf_available = True
+            print("TensorFlow is available, will use from_tf=True")
+        except ImportError:
+            print("TensorFlow is not installed, will use default PyTorch loading")
+        
+        # Load the model with appropriate settings based on TensorFlow availability
+        print(f"Loading model {'with from_tf=True' if tf_available else 'with default PyTorch settings'}...")
         model = AutoModelForSeq2SeqLM.from_pretrained(
             model_name,
-            from_tf=True,  # Explicitly set from_tf=True
+            from_tf=tf_available,  # Only set True if TensorFlow is available
             cache_dir="/tmp/transformers_cache"
         )
         
@@ -82,7 +91,7 @@ def initialize_model():
         print("Creating pipeline with pre-loaded model...")
         translator = pipeline(
             "text2text-generation",
-            model=model,  # Use the model we loaded with from_tf=True
+            model=model,
             tokenizer=tokenizer,
             device=-1,  # Use CPU for compatibility (-1) or GPU if available (0)
             max_length=512
