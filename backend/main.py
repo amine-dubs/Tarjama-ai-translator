@@ -142,6 +142,7 @@ def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar"
     if translator is None:
         success = initialize_model()
         if not success:
+            print("Model initialization failed, falling back to online translation")
             return fallback_translate(text, source_lang, target_lang)
     
     try:
@@ -154,15 +155,49 @@ Ensure the translation reads naturally to a native Arabic speaker.
 Text to translate:
 {text}"""
 
-        # Generate translation using the model
-        outputs = translator(prompt, max_length=512, do_sample=False)
+        # Add timeout handling to prevent hanging
+        import threading
+        import queue
+
+        def model_inference():
+            try:
+                outputs = translator(prompt, max_length=512, do_sample=False)
+                result_queue.put(outputs)
+            except Exception as e:
+                result_queue.put(e)
+
+        # Create a queue to get the result or exception
+        result_queue = queue.Queue()
         
-        if outputs and len(outputs) > 0:
-            translated_text = outputs[0]['generated_text']
-            print(f"Translation successful using transformers model")
-            return culturally_adapt_arabic(translated_text)
-        else:
-            print("Model returned empty output")
+        # Start the translation in a separate thread
+        thread = threading.Thread(target=model_inference)
+        thread.daemon = True
+        thread.start()
+        
+        # Wait for the result with a timeout (10 seconds)
+        thread.join(timeout=10)
+        
+        # Check if the thread completed within the timeout
+        if thread.is_alive():
+            print("Model inference timed out after 10 seconds, falling back to online translation")
+            return fallback_translate(text, source_lang, target_lang)
+            
+        # Get the result from the queue
+        try:
+            result = result_queue.get(block=False)
+            if isinstance(result, Exception):
+                raise result
+                
+            # Process the translation result
+            if result and len(result) > 0:
+                translated_text = result[0]['generated_text']
+                print(f"Translation successful using transformers model")
+                return culturally_adapt_arabic(translated_text)
+            else:
+                print("Model returned empty output")
+                return fallback_translate(text, source_lang, target_lang)
+        except queue.Empty:
+            print("No result in queue despite thread completing")
             return fallback_translate(text, source_lang, target_lang)
             
     except Exception as e:

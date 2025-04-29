@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const docSourceLang = document.getElementById('doc-source-lang');
     const errorMessageDiv = document.getElementById('error-message');
     const docLoadingIndicator = document.getElementById('doc-loading');
-
+    
     // Helper function to display errors
     function displayError(message) {
         errorMessageDiv.textContent = `Error: ${message}`;
@@ -43,21 +43,38 @@ document.addEventListener('DOMContentLoaded', () => {
         button.textContent = 'Translating...';
 
         try {
+            console.log('Sending translation request...');
             const response = await fetch('/translate/text', {
                 method: 'POST',
                 body: formData
             });
 
+            console.log('Response received:', response.status, response.statusText);
+
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                let errorMessage;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.detail || `HTTP error! status: ${response.status}`;
+                } catch (jsonError) {
+                    errorMessage = `HTTP error! status: ${response.status}. Failed to parse error response.`;
+                }
+                throw new Error(errorMessage);
             }
 
+            console.log('Processing response...');
             const result = await response.json();
+            console.log('Parsed JSON result:', result);
+
+            if (!result.translated_text) {
+                console.error('Missing translated_text in response:', result);
+                throw new Error('Server response missing translated text');
+            }
+
             textOutput.textContent = result.translated_text;
             textResultBox.style.display = 'block';
-            // Optionally update language direction based on result if needed
-            // textResultBox.dir = result.target_lang === 'ar' ? 'rtl' : 'ltr';
+            // Set text direction for Arabic
+            textOutput.dir = 'rtl';
 
         } catch (error) {
             console.error('Text translation error:', error);
