@@ -8,6 +8,7 @@ import requests
 import json
 import traceback
 import io
+import concurrent.futures
 
 # Import transformers for local model inference
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
@@ -64,47 +65,33 @@ def initialize_model():
         # Use a smaller model that works well for instruction-based translation
         model_name = "google/flan-t5-small"
         
+        # Check for available device - properly detect CPU/GPU
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Device set to use {device}")
+        
         # Load the tokenizer with explicit cache directory
         tokenizer = AutoTokenizer.from_pretrained(
             model_name, 
             cache_dir="/tmp/transformers_cache"
         )
         
-        # Check if TensorFlow and tf-keras are available
-        tf_available = False
+        # Load the model with PyTorch approach which is more reliable
         try:
-            import tensorflow
-            # Try to import tf_keras which is the compatibility package
-            try:
-                import tf_keras
-                print("tf-keras is installed, using TensorFlow with compatibility layer")
-                tf_available = True
-            except ImportError:
-                print("tf-keras not found, will try to use PyTorch backend")
-            print("TensorFlow is available, will use from_tf=True")
-        except ImportError:
-            print("TensorFlow is not installed, will use default PyTorch loading")
-        
-        # Load the model with appropriate settings based on TensorFlow availability
-        print(f"Loading model {'with from_tf=True' if tf_available else 'with default PyTorch settings'}...")
-        try:
-            # First try with PyTorch approach which is more reliable
+            print("Loading model with PyTorch backend...")
             model = AutoModelForSeq2SeqLM.from_pretrained(
                 model_name,
-                from_tf=False,  # Use PyTorch first
-                cache_dir="/tmp/transformers_cache"
+                cache_dir="/tmp/transformers_cache",
+                low_cpu_mem_usage=True,  # Add this for better memory usage
+                device_map="auto"  # Let the library decide optimal device mapping
             )
         except Exception as e:
             print(f"PyTorch loading failed: {e}")
-            if tf_available:
-                print("Attempting to load with TensorFlow...")
-                model = AutoModelForSeq2SeqLM.from_pretrained(
-                    model_name,
-                    from_tf=True,
-                    cache_dir="/tmp/transformers_cache"
-                )
-            else:
-                raise  # Re-raise if we can't use TensorFlow either
+            print("Attempting to load with TensorFlow...")
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                model_name,
+                from_tf=True,
+                cache_dir="/tmp/transformers_cache"
+            )
         
         # Create a pipeline with the loaded model and tokenizer
         print("Creating pipeline with pre-loaded model...")
@@ -112,7 +99,7 @@ def initialize_model():
             "text2text-generation",
             model=model,
             tokenizer=tokenizer,
-            device=-1,  # Use CPU for compatibility (-1) or GPU if available (0)
+            device=device,  # Use detected device instead of hardcoding -1
             max_length=512
         )
         
@@ -124,135 +111,96 @@ def initialize_model():
         return False
 
 # --- Translation Function ---
-def translate_text_internal(text: str, source_lang: str, target_lang: str = "ar") -> str:
-    """
-    Translate text using local T5 model with prompt engineering
-    """
-    global translator
+def translate_text(text, source_lang, target_lang):
+    """Translate text using local model or fallback to online services."""
+    global translator, tokenizer, model
     
-    if not text.strip():
-        return ""
-        
     print(f"Translation Request - Source Lang: {source_lang}, Target Lang: {target_lang}")
     
-    # Get full language name for prompt
-    source_lang_name = LANGUAGE_MAP.get(source_lang, source_lang)
-    
-    # Initialize the model if it hasn't been loaded yet
-    if translator is None:
+    if not model or not tokenizer:
         success = initialize_model()
         if not success:
-            print("Model initialization failed, falling back to online translation")
-            return fallback_translate(text, source_lang, target_lang)
+            return use_fallback_translation(text, source_lang, target_lang)
     
     try:
-        # Construct our eloquent Arabic translation prompt
-        prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
-Focus on conveying the meaning elegantly using proper Balagha (Arabic eloquence).
-Adapt any cultural references or idioms appropriately rather than translating literally.
-Ensure the translation reads naturally to a native Arabic speaker.
-
-Text to translate:
-{text}"""
-
-        # Add timeout handling to prevent hanging
-        import threading
-        import queue
-
-        def model_inference():
+        # Prepare input with explicit instruction format for better results with flan-t5
+        input_text = f"Translate from {source_lang} to {target_lang}: {text}"
+        
+        # Use a more reliable timeout approach with concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                lambda: translator(
+                    input_text, 
+                    max_length=512,
+                    num_beams=4,  # Increase beam search for better quality
+                    no_repeat_ngram_size=2
+                )[0]["generated_text"]
+            )
+            
             try:
-                outputs = translator(prompt, max_length=512, do_sample=False)
-                result_queue.put(outputs)
-            except Exception as e:
-                result_queue.put(e)
-
-        # Create a queue to get the result or exception
-        result_queue = queue.Queue()
-        
-        # Start the translation in a separate thread
-        thread = threading.Thread(target=model_inference)
-        thread.daemon = True
-        thread.start()
-        
-        # Wait for the result with a timeout (10 seconds)
-        thread.join(timeout=10)
-        
-        # Check if the thread completed within the timeout
-        if thread.is_alive():
-            print("Model inference timed out after 10 seconds, falling back to online translation")
-            return fallback_translate(text, source_lang, target_lang)
-            
-        # Get the result from the queue
-        try:
-            result = result_queue.get(block=False)
-            if isinstance(result, Exception):
-                raise result
+                # Set a reasonable timeout (15 seconds instead of 10)
+                result = future.result(timeout=15)
                 
-            # Process the translation result
-            if result and len(result) > 0:
-                translated_text = result[0]['generated_text']
-                print(f"Translation successful using transformers model")
-                return culturally_adapt_arabic(translated_text)
-            else:
-                print("Model returned empty output")
-                return fallback_translate(text, source_lang, target_lang)
-        except queue.Empty:
-            print("No result in queue despite thread completing")
-            return fallback_translate(text, source_lang, target_lang)
-            
+                # Clean up result (remove any instruction preamble if present)
+                if ':' in result and len(result.split(':', 1)) > 1:
+                    result = result.split(':', 1)[1].strip()
+                
+                return result
+            except concurrent.futures.TimeoutError:
+                print(f"Model inference timed out after 15 seconds, falling back to online translation")
+                return use_fallback_translation(text, source_lang, target_lang)
     except Exception as e:
-        print(f"Error in model translation: {e}")
+        print(f"Error using local model: {e}")
         traceback.print_exc()
-        return fallback_translate(text, source_lang, target_lang)
+        return use_fallback_translation(text, source_lang, target_lang)
 
-def fallback_translate(text: str, source_lang: str, target_lang: str = "ar") -> str:
-    """Fallback to online translation APIs if local model fails."""
-    # Try LibreTranslate
-    libre_translate_endpoints = [
+def use_fallback_translation(text, source_lang, target_lang):
+    """Use various fallback online translation services."""
+    # List of LibreTranslate servers to try in order
+    libre_servers = [
         "https://translate.terraprint.co/translate",
         "https://libretranslate.de/translate",
-        "https://translate.argosopentech.com/translate"
+        "https://translate.argosopentech.com/translate",
+        "https://translate.fedilab.app/translate"  # Added additional server
     ]
     
-    for endpoint in libre_translate_endpoints:
+    # Try each LibreTranslate server
+    for server in libre_servers:
         try:
-            print(f"Attempting fallback translation using LibreTranslate: {endpoint}")
+            print(f"Attempting fallback translation using LibreTranslate: {server}")
+            headers = {
+                "Content-Type": "application/json"
+            }
             payload = {
                 "q": text,
-                "source": source_lang if source_lang != "auto" else "auto",
-                "target": target_lang,
-                "format": "text"
+                "source": source_lang,
+                "target": target_lang
             }
             
-            response = requests.post(endpoint, json=payload, timeout=10)
+            # Use a shorter timeout for the request (5 seconds instead of 10)
+            response = requests.post(server, json=payload, headers=headers, timeout=5)
             
             if response.status_code == 200:
                 result = response.json()
-                translated_text = result.get("translatedText")
-                
-                if translated_text:
-                    print(f"Translation successful using LibreTranslate {endpoint}")
-                    return culturally_adapt_arabic(translated_text)
+                if "translatedText" in result:
+                    return result["translatedText"]
         except Exception as e:
-            print(f"Error with LibreTranslate {endpoint}: {e}")
+            print(f"Error with LibreTranslate {server}: {str(e)}")
+            continue
     
-    # If all else fails, use a simple English-Arabic dictionary for common phrases
-    common_phrases = {
-        "hello": "مرحبا",
-        "thank you": "شكرا لك",
-        "goodbye": "مع السلامة",
-        "welcome": "أهلا وسهلا",
-        "yes": "نعم",
-        "no": "لا",
-        "please": "من فضلك",
-        "sorry": "آسف",
-    }
+    # If all LibreTranslate servers fail, try Google Translate API with a wrapper
+    # that doesn't need an API key for limited usage
+    try:
+        print("Attempting fallback with Google Translate (no API key)")
+        from googletrans import Translator
+        google_translator = Translator()
+        result = google_translator.translate(text, src=source_lang, dest=target_lang)
+        return result.text
+    except Exception as e:
+        print(f"Error with Google Translate fallback: {str(e)}")
     
-    if text.lower().strip() in common_phrases:
-        return common_phrases[text.lower().strip()]
-    
-    # Last resort message
-    return "عذراً، لم نتمكن من ترجمة النص بسبب خطأ فني. الرجاء المحاولة لاحقاً."
+    # Final fallback - return original text with error message
+    return f"[Translation failed] {text}"
 
 def culturally_adapt_arabic(text: str) -> str:
     """Apply post-processing rules to enhance Arabic translation with cultural sensitivity."""
@@ -338,7 +286,7 @@ async def translate_text_endpoint(
         raise HTTPException(status_code=400, detail="No text provided for translation.")
     
     try:
-        translated_text = translate_text_internal(text, source_lang, target_lang)
+        translated_text = translate_text(text, source_lang, target_lang)
         return JSONResponse(content={"translated_text": translated_text, "source_lang": source_lang})
     except Exception as e:
         print(f"Translation error: {e}")
@@ -360,7 +308,7 @@ async def translate_document_endpoint(
             raise HTTPException(status_code=400, detail="Could not extract any text from the document.")
 
         # Translate the extracted text
-        translated_text = translate_text_internal(extracted_text, source_lang, target_lang)
+        translated_text = translate_text(extracted_text, source_lang, target_lang)
 
         return JSONResponse(content={
             "original_filename": file.filename,
