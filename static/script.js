@@ -12,7 +12,30 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Helper function to display errors
     function displayError(message) {
-        errorMessageDiv.textContent = `Error: ${message}`;
+        let errorText = 'Error: ';
+        
+        if (message === undefined || message === null) {
+            errorText += 'Unknown error occurred';
+        } else if (typeof message === 'object') {
+            // Better error object handling
+            if (message.message) {
+                errorText += message.message;
+            } else if (message.detail) {
+                errorText += message.detail;
+            } else if (message.error) {
+                errorText += message.error;
+            } else {
+                try {
+                    errorText += JSON.stringify(message);
+                } catch (e) {
+                    errorText += 'Unable to display error details';
+                }
+            }
+        } else {
+            errorText += message;
+        }
+        
+        errorMessageDiv.textContent = errorText;
         errorMessageDiv.style.display = 'block';
         // Hide result boxes on error
         textResultBox.style.display = 'none';
@@ -78,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Text translation error:', error);
+            // Always pass error.message instead of the error object
             displayError(error.message || 'An unexpected error occurred during text translation.');
         } finally {
             button.disabled = false;
@@ -130,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Document translation error:', error);
+            // Always pass error.message instead of the error object
             displayError(error.message || 'An unexpected error occurred during document translation.');
         } finally {
             button.disabled = false;
