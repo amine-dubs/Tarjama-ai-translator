@@ -9,6 +9,8 @@ import json
 import traceback
 import io
 import concurrent.futures
+import subprocess
+import sys
 
 # Import transformers for local model inference
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
@@ -66,47 +68,71 @@ def initialize_model():
         model_name = "google/flan-t5-small"
         
         # Check for available device - properly detect CPU/GPU
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Device set to use {device}")
+        device = "cpu"  # Default to CPU which is more reliable
+        if torch.cuda.is_available():
+            device = "cuda"
+            print(f"CUDA is available: {torch.cuda.get_device_name(0)}")
+        print(f"Device set to use: {device}")
         
         # Load the tokenizer with explicit cache directory
+        print(f"Loading tokenizer from {model_name}...")
         tokenizer = AutoTokenizer.from_pretrained(
             model_name, 
             cache_dir="/tmp/transformers_cache"
         )
+        if tokenizer is None:
+            print("Failed to load tokenizer")
+            return False
+        print("Tokenizer loaded successfully")
         
-        # Load the model with PyTorch approach which is more reliable
+        # Load the model with explicit device placement
+        print(f"Loading model from {model_name}...")
         try:
-            print("Loading model with PyTorch backend...")
             model = AutoModelForSeq2SeqLM.from_pretrained(
                 model_name,
                 cache_dir="/tmp/transformers_cache",
-                low_cpu_mem_usage=True,  # Add this for better memory usage
-                device_map="auto"  # Let the library decide optimal device mapping
+                low_cpu_mem_usage=True,  # Better memory usage
+                torch_dtype=torch.float32  # Explicit dtype for better compatibility
             )
+            # Move model to device after loading
+            model = model.to(device)
+            print(f"Model loaded with PyTorch and moved to {device}")
         except Exception as e:
-            print(f"PyTorch loading failed: {e}")
-            print("Attempting to load with TensorFlow...")
-            model = AutoModelForSeq2SeqLM.from_pretrained(
-                model_name,
-                from_tf=True,
-                cache_dir="/tmp/transformers_cache"
-            )
+            print(f"Error loading model: {e}")
+            print("Model initialization failed")
+            return False
         
         # Create a pipeline with the loaded model and tokenizer
-        print("Creating pipeline with pre-loaded model...")
-        translator = pipeline(
-            "text2text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            device=device,  # Use detected device instead of hardcoding -1
-            max_length=512
-        )
-        
-        print(f"Model {model_name} successfully initialized")
-        return True
+        print("Creating translation pipeline...")
+        try:
+            # Create the pipeline with explicit model and tokenizer
+            translator = pipeline(
+                "text2text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                device=0 if device == "cuda" else -1,  # Proper device mapping
+                framework="pt"  # Explicitly use PyTorch
+            )
+            
+            if translator is None:
+                print("Failed to create translator pipeline")
+                return False
+                
+            # Test the model with a simple translation to verify it works
+            test_result = translator("Translate from English to French: hello", max_length=128)
+            print(f"Model test result: {test_result}")
+            if not test_result or not isinstance(test_result, list) or len(test_result) == 0:
+                print("Model test failed: Invalid output format")
+                return False
+                
+            print(f"Model {model_name} successfully initialized and tested")
+            return True
+        except Exception as inner_e:
+            print(f"Error creating translation pipeline: {inner_e}")
+            traceback.print_exc()
+            return False
     except Exception as e:
-        print(f"Error initializing model: {e}")
+        print(f"Critical error initializing model: {e}")
         traceback.print_exc()
         return False
 
@@ -276,22 +302,139 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/translate/text")
-async def translate_text_endpoint(
-    text: str = Form(...),
-    source_lang: str = Form(...),
-    target_lang: str = Form("ar")
-):
-    """Translates direct text input."""
-    if not text:
-        raise HTTPException(status_code=400, detail="No text provided for translation.")
+async def translate_text(request: TranslationRequest):
+    global translator, model, tokenizer
+    
+    source_lang = request.source_lang
+    target_lang = request.target_lang
+    text = request.text
+    
+    print(f"Translation Request - Source Lang: {source_lang}, Target Lang: {target_lang}")
+    
+    translation_result = ""
+    error_message = None
     
     try:
-        translated_text = translate_text(text, source_lang, target_lang)
-        return JSONResponse(content={"translated_text": translated_text, "source_lang": source_lang})
+        # Check if translator is initialized, if not, initialize it
+        if translator is None:
+            print("Translator not initialized. Attempting to initialize model...")
+            success = initialize_model()
+            if not success:
+                raise Exception("Failed to initialize translation model")
+        
+        # Format the prompt for the model
+        lang_code_map = {
+            "en": "English", "es": "Spanish", "fr": "French", "de": "German",
+            "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "ar": "Arabic",
+            "ru": "Russian", "pt": "Portuguese", "it": "Italian", "nl": "Dutch"
+        }
+        
+        source_lang_name = lang_code_map.get(source_lang.lower(), source_lang)
+        target_lang_name = lang_code_map.get(target_lang.lower(), target_lang)
+        
+        # Create a proper prompt for instruction-based models
+        prompt = f"Translate from {source_lang_name} to {target_lang_name}: {text}"
+        print(f"Using prompt: {prompt}")
+        
+        # Check that translator is callable before proceeding
+        if not callable(translator):
+            print("Translator is not callable, attempting to reinitialize")
+            success = initialize_model()
+            if not success or not callable(translator):
+                raise Exception("Translator is not callable after reinitialization")
+        
+        # Use a thread pool to execute the translation with a timeout
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                lambda: translator(
+                    prompt,
+                    max_length=512,
+                    do_sample=False,
+                    temperature=0.7
+                )
+            )
+            
+            try:
+                result = future.result(timeout=15)
+                translation_result = result[0]["generated_text"]
+                
+                # Clean up the output - remove any prefix like "Translation:"
+                prefixes = ["Translation:", "Translation: ", f"{target_lang_name}:", f"{target_lang_name}: "]
+                for prefix in prefixes:
+                    if translation_result.startswith(prefix):
+                        translation_result = translation_result[len(prefix):].strip()
+                        
+                print(f"Local model translation result: {translation_result}")
+            except concurrent.futures.TimeoutError:
+                print("Translation timed out after 15 seconds")
+                raise Exception("Translation timed out")
+            except Exception as e:
+                print(f"Error using local model: {str(e)}")
+                raise Exception(f"Error using local model: {str(e)}")
+    
     except Exception as e:
-        print(f"Translation error: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Translation error: {str(e)}")
+        error_message = str(e)
+        print(f"Error using local model: {error_message}")
+        
+        # Try the fallback options
+        try:
+            # Install googletrans if not present
+            try:
+                import googletrans
+            except ImportError:
+                print("Installing googletrans package...")
+                subprocess.call([sys.executable, "-m", "pip", "install", "googletrans==4.0.0-rc1"])
+                
+            # Try LibreTranslate providers
+            libre_apis = [
+                "https://translate.terraprint.co/translate",
+                "https://libretranslate.de/translate",
+                "https://translate.argosopentech.com/translate",
+                "https://translate.fedilab.app/translate"
+            ]
+            
+            for api_url in libre_apis:
+                try:
+                    print(f"Attempting fallback translation using LibreTranslate: {api_url}")
+                    payload = {
+                        "q": text,
+                        "source": source_lang,
+                        "target": target_lang,
+                        "format": "text",
+                        "api_key": ""
+                    }
+                    headers = {"Content-Type": "application/json"}
+                    response = requests.post(api_url, json=payload, headers=headers, timeout=5)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if "translatedText" in result:
+                            translation_result = result["translatedText"]
+                            print(f"LibreTranslate successful: {translation_result}")
+                            break
+                except Exception as libre_error:
+                    print(f"Error with LibreTranslate {api_url}: {str(libre_error)}")
+            
+            # If LibreTranslate failed, try Google Translate
+            if not translation_result:
+                try:
+                    print("Attempting fallback with Google Translate (no API key)")
+                    from googletrans import Translator
+                    google_translator = Translator()
+                    result = google_translator.translate(text, src=source_lang, dest=target_lang)
+                    translation_result = result.text
+                    print(f"Google Translate successful: {translation_result}")
+                except Exception as google_error:
+                    print(f"Error with Google Translate fallback: {str(google_error)}")
+        
+        except Exception as fallback_error:
+            print(f"All fallback translation methods failed: {str(fallback_error)}")
+    
+    # If all translation attempts failed
+    if not translation_result:
+        return {"success": False, "error": error_message or "All translation methods failed"}
+    
+    return {"success": True, "translation": translation_result}
 
 @app.post("/translate/document")
 async def translate_document_endpoint(
