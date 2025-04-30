@@ -56,86 +56,68 @@ document.addEventListener('DOMContentLoaded', () => {
         docLoadingIndicator.style.display = 'none';
     }
 
-    // Handle Text Translation Form Submission
-    textForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        clearFeedback();
-
-        const formData = new FormData(textForm);
-        const button = textForm.querySelector('button');
-        const textInput = document.getElementById('text-input');
-        
-        // Validation check
-        if (!textInput.value.trim()) {
-            displayError('Please enter text to translate');
-            return;
-        }
-        
-        button.disabled = true;
-        button.textContent = 'Translating...';
-
-        try {
-            console.log('Sending translation request...');
+    // Improve the text form submission handler
+    if (textForm) {
+        textForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearFeedback();
             
-            // Create JSON payload from FormData
-            const payload = {
-                text: formData.get('text'),
-                source_lang: formData.get('source_lang'),
-                target_lang: formData.get('target_lang')
-            };
+            const sourceText = document.getElementById('source-text').value.trim();
+            const sourceLang = document.getElementById('text-source-lang').value;
+            const targetLang = document.getElementById('text-target-lang').value;
             
-            console.log('Payload:', payload);
+            if (!sourceText) {
+                displayError('Please enter text to translate');
+                return;
+            }
             
-            const response = await fetch('/translate/text', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload)
-            });
-
-            console.log('Response status:', response.status, response.statusText);
-            
-            // Get response data as text first for debugging
-            const responseText = await response.text();
-            console.log('Raw response:', responseText);
-            
-            // Try to parse as JSON
-            let data;
             try {
-                data = responseText ? JSON.parse(responseText) : null;
-            } catch (parseError) {
-                console.error('Error parsing JSON response:', parseError);
-                throw new Error(`Failed to parse server response: ${responseText}`);
+                // Show loading state
+                document.getElementById('text-loading').style.display = 'block';
+                
+                const response = await fetch('/translate/text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: sourceText,
+                        source_lang: sourceLang,
+                        target_lang: targetLang
+                    })
+                });
+                
+                // Hide loading state
+                document.getElementById('text-loading').style.display = 'none';
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    // Properly extract error message from the response
+                    if (data && data.error) {
+                        displayError(data.error);
+                    } else {
+                        displayError(`Server error: ${response.status}`);
+                    }
+                    return;
+                }
+                
+                if (!data.success && data.error) {
+                    displayError(data.error);
+                    return;
+                }
+                
+                // Display the successful translation
+                textOutput.textContent = data.translated_text;
+                textResultBox.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error:', error);
+                displayError('Network error or invalid response format');
+                document.getElementById('text-loading').style.display = 'none';
             }
-            
-            if (!data) {
-                throw new Error('Server returned empty response');
-            }
-            
-            // Check if the response indicates an error
-            if (!response.ok) {
-                const errorMsg = data.error || data.detail || 'Unknown server error';
-                throw new Error(errorMsg);
-            }
-            
-            // Check if we have actual translated text
-            if (data.success === false || !data.translated_text) {
-                throw new Error(data.error || 'No translation returned from server');
-            }
-            
-            // Display the translation results
-            textOutput.textContent = data.translated_text;
-            textResultBox.style.display = 'block';
-            
-        } catch (error) {
-            console.error('Translation error:', error);
-            displayError(error);
-        } finally {
-            button.disabled = false;
-            button.textContent = 'Translate';
-        }
-    });
+        });
+    }
 
     // Handle Document Translation Form Submission
     docForm.addEventListener('submit', async (event) => {
