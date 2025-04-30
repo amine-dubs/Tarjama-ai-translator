@@ -67,9 +67,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             console.log('Sending translation request...');
+            
+            // Create JSON payload from FormData instead of sending FormData directly
+            const payload = {
+                text: formData.get('text'),
+                source_lang: formData.get('source_lang'),
+                target_lang: formData.get('target_lang')
+            };
+            
             const response = await fetch('/translate/text', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
             });
 
             console.log('Response received:', response.status, response.statusText);

@@ -500,7 +500,7 @@ async def translate_text_endpoint(request: TranslationRequest):
                 print(f"Error with fallback translation: {str(e)}")
                 translation_result = f"[Translation failed during fallback] {text}"
 
-        return {"success": True, "translation": translation_result}
+        return {"success": True, "translated_text": translation_result}
     
     except Exception as e:
         print(f"Critical error in translate_text_endpoint: {str(e)}")
