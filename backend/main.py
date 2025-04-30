@@ -11,6 +11,7 @@ import io
 import concurrent.futures
 import subprocess
 import sys
+import time
 
 # Import transformers for local model inference
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
@@ -55,14 +56,29 @@ os.environ['XDG_CACHE_HOME'] = '/tmp/cache'
 translator = None
 tokenizer = None
 model = None
+model_initialization_attempts = 0
+max_model_initialization_attempts = 3
+last_initialization_attempt = 0
+initialization_cooldown = 300  # 5 minutes cooldown between retry attempts
 
 # --- Model initialization function ---
 def initialize_model():
     """Initialize the translation model and tokenizer."""
-    global translator, tokenizer, model
+    global translator, tokenizer, model, model_initialization_attempts, last_initialization_attempt
+    
+    # Check if we've exceeded maximum attempts and if enough time has passed since last attempt
+    current_time = time.time()
+    if (model_initialization_attempts >= max_model_initialization_attempts and 
+        current_time - last_initialization_attempt < initialization_cooldown):
+        print(f"Maximum initialization attempts reached. Waiting for cooldown period.")
+        return False
+    
+    # Update attempt counter and timestamp
+    model_initialization_attempts += 1
+    last_initialization_attempt = current_time
     
     try:
-        print("Initializing model and tokenizer...")
+        print(f"Initializing model and tokenizer (attempt {model_initialization_attempts})...")
         
         # Use a smaller model that works well for instruction-based translation
         model_name = "google/flan-t5-small"
@@ -124,7 +140,9 @@ def initialize_model():
             if not test_result or not isinstance(test_result, list) or len(test_result) == 0:
                 print("Model test failed: Invalid output format")
                 return False
-                
+            
+            # Success - reset the attempt counter
+            model_initialization_attempts = 0
             print(f"Model {model_name} successfully initialized and tested")
             return True
         except Exception as inner_e:
@@ -143,9 +161,11 @@ def translate_text(text, source_lang, target_lang):
     
     print(f"Translation Request - Source Lang: {source_lang}, Target Lang: {target_lang}")
     
-    if not model or not tokenizer:
+    # Check if model is initialized, if not try to initialize it
+    if not model or not tokenizer or not translator:
         success = initialize_model()
         if not success:
+            print("Local model initialization failed, using fallback translation")
             return use_fallback_translation(text, source_lang, target_lang)
     
     try:
@@ -175,10 +195,44 @@ def translate_text(text, source_lang, target_lang):
             except concurrent.futures.TimeoutError:
                 print(f"Model inference timed out after 15 seconds, falling back to online translation")
                 return use_fallback_translation(text, source_lang, target_lang)
+            except Exception as e:
+                print(f"Error during model inference: {e}")
+                
+                # If the model failed during inference, try to re-initialize it for next time
+                # but use fallback for this request
+                initialize_model()
+                return use_fallback_translation(text, source_lang, target_lang)
     except Exception as e:
         print(f"Error using local model: {e}")
         traceback.print_exc()
         return use_fallback_translation(text, source_lang, target_lang)
+
+# --- Function to check model status and trigger re-initialization if needed ---
+def check_and_reinitialize_model():
+    """Check if model needs to be reinitialized and do so if necessary"""
+    global translator, model, tokenizer
+    
+    try:
+        # If model isn't initialized yet, try to initialize it
+        if not model or not tokenizer or not translator:
+            print("Model not initialized. Attempting initialization...")
+            return initialize_model()
+            
+        # Test the existing model with a simple translation
+        test_text = "Translate from English to French: hello"
+        result = translator(test_text, max_length=128)
+        
+        # If we got a valid result, model is working fine
+        if result and isinstance(result, list) and len(result) > 0:
+            print("Model check: Model is functioning correctly.")
+            return True
+        else:
+            print("Model check: Model returned invalid result. Reinitializing...")
+            return initialize_model()
+    except Exception as e:
+        print(f"Error checking model status: {e}")
+        print("Model may be in a bad state. Attempting reinitialization...")
+        return initialize_model()
 
 def use_fallback_translation(text, source_lang, target_lang):
     """Use various fallback online translation services."""
@@ -254,7 +308,6 @@ async def extract_text_from_file(file: UploadFile) -> str:
                         break
                     except UnicodeDecodeError:
                         continue
-                    
         elif file_extension == '.docx':
             try:
                 import docx
@@ -266,7 +319,6 @@ async def extract_text_from_file(file: UploadFile) -> str:
                 extracted_text = '\n'.join([para.text for para in doc.paragraphs])
             except ImportError:
                 raise HTTPException(status_code=501, detail="DOCX processing requires 'python-docx' library")
-                
         elif file_extension == '.pdf':
             try:
                 import fitz  # PyMuPDF
@@ -283,7 +335,6 @@ async def extract_text_from_file(file: UploadFile) -> str:
                 doc.close()
             except ImportError:
                 raise HTTPException(status_code=501, detail="PDF processing requires 'PyMuPDF' library")
-                
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_extension}")
 
