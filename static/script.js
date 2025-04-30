@@ -75,6 +75,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Show loading state
                 document.getElementById('text-loading').style.display = 'block';
                 
+                // Log payload for debugging
+                console.log('Sending payload:', { text: sourceText, source_lang: sourceLang, target_lang: targetLang });
+                
                 const response = await fetch('/translate/text', {
                     method: 'POST',
                     headers: {
@@ -90,10 +93,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Hide loading state
                 document.getElementById('text-loading').style.display = 'none';
                 
+                // Log response status
+                console.log('Response status:', response.status);
+                
                 const data = await response.json();
                 
                 if (!response.ok) {
-                    // Properly extract error message from the response
                     if (data && data.error) {
                         displayError(data.error);
                     } else {
@@ -107,7 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 
-                // Display the successful translation
                 textOutput.textContent = data.translated_text;
                 textResultBox.style.display = 'block';
                 

@@ -367,13 +367,14 @@ async def read_root(request: Request):
 async def translate_text_endpoint(request: TranslationRequest):
     global translator, model, tokenizer
     
+    print("[DEBUG] /translate/text endpoint called")
     try:
         # Explicitly extract fields from request to ensure they exist
         source_lang = request.source_lang
         target_lang = request.target_lang
         text = request.text
         
-        print(f"Translation Request - Source Lang: {source_lang}, Target Lang: {target_lang}, Text: {text[:50]}...")
+        print(f"[DEBUG] Received request: source_lang={source_lang}, target_lang={target_lang}, text={text[:50]}")
         
         translation_result = ""
         error_message = None
@@ -381,7 +382,7 @@ async def translate_text_endpoint(request: TranslationRequest):
         try:
             # Check if translator is initialized, if not, initialize it
             if translator is None:
-                print("Translator not initialized. Attempting to initialize model...")
+                print("[DEBUG] Translator not initialized. Attempting to initialize model...")
                 success = initialize_model()
                 if not success:
                     raise Exception("Failed to initialize translation model")
@@ -402,11 +403,11 @@ async def translate_text_endpoint(request: TranslationRequest):
             
             # Check that translator is callable before proceeding
             if not callable(translator):
-                print("Translator is not callable, attempting to reinitialize")
+                print("[DEBUG] Translator is not callable, attempting to reinitialize")
                 success = initialize_model()
                 if not success or not callable(translator):
                     raise Exception("Translator is not callable after reinitialization")
-            
+            print("[DEBUG] Calling translator model...")
             # Use a thread pool to execute the translation with a timeout
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(
