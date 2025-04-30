@@ -11,3 +11,4 @@ sentencepiece
 tensorflow
 tf-keras
 hf_xet
+accelerate
