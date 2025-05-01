@@ -87,8 +87,8 @@ def initialize_model():
     try:
         print(f"Initializing model and tokenizer (attempt {model_initialization_attempts})...")
         
-        # Use a smaller model that works well for instruction-based translation
-        model_name = "google/flan-t5-small"
+        # Use a better translation model that handles multilingual tasks well
+        model_name = "facebook/nllb-200-distilled-600M"  # Better multilingual translation model
         
         # Check for available device - properly detect CPU/GPU
         device = "cpu"  # Default to CPU which is more reliable
@@ -101,7 +101,8 @@ def initialize_model():
         print(f"Loading tokenizer from {model_name}...")
         tokenizer = AutoTokenizer.from_pretrained(
             model_name, 
-            cache_dir="/tmp/transformers_cache"
+            cache_dir="/tmp/transformers_cache",
+            use_fast=True  # Use faster tokenizer when possible
         )
         if tokenizer is None:
             print("Failed to load tokenizer")
@@ -130,7 +131,7 @@ def initialize_model():
         try:
             # Create the pipeline with explicit model and tokenizer
             translator = pipeline(
-                "text2text-generation",
+                "translation",
                 model=model,
                 tokenizer=tokenizer,
                 device=0 if device == "cuda" else -1,  # Proper device mapping
@@ -142,7 +143,8 @@ def initialize_model():
                 return False
                 
             # Test the model with a simple translation to verify it works
-            test_result = translator("Translate from English to French: hello", max_length=128)
+            # NLLB needs language codes in format like "eng_Latn" and "ara_Arab"
+            test_result = translator("hello", src_lang="eng_Latn", tgt_lang="ara_Arab", max_length=128)
             print(f"Model test result: {test_result}")
             if not test_result or not isinstance(test_result, list) or len(test_result) == 0:
                 print("Model test failed: Invalid output format")
@@ -176,31 +178,24 @@ def translate_text(text, source_lang, target_lang):
             return use_fallback_translation(text, source_lang, target_lang)
     
     try:
-        # Prepare input with explicit instruction format for better results with flan-t5
-        if target_lang == "Arabic" or target_lang == "ar":
-            # Special prompt for Arabic translations
-            input_text = f"You are a bilingual in {source_lang} and Arabic, a professional translator, translate this script from {source_lang} to Arabic MSA with cultural sensitivity and accuracy, with a focus on meaning and eloquence (Balagha), avoiding overly literal translations.: {text}"
-        else:
-            input_text = f"Translate from {source_lang} to {target_lang}: {text}"
+        # Prepare input with explicit instruction format for better results with NLLB
+        src_lang_code = f"{source_lang}_Latn" if source_lang != "ar" else f"{source_lang}_Arab"
+        tgt_lang_code = f"{target_lang}_Latn" if target_lang != "ar" else f"{target_lang}_Arab"
         
         # Use a more reliable timeout approach with concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
                 lambda: translator(
-                    input_text, 
-                    max_length=512,
-                    num_beams=4,  # Increase beam search for better quality
-                    no_repeat_ngram_size=2
-                )[0]["generated_text"]
+                    text, 
+                    src_lang=src_lang_code,
+                    tgt_lang=tgt_lang_code,
+                    max_length=512
+                )[0]["translation_text"]
             )
             
             try:
                 # Set a reasonable timeout (15 seconds instead of 10)
                 result = future.result(timeout=15)
-                
-                # Clean up result (remove any instruction preamble if present)
-                if ':' in result and len(result.split(':', 1)) > 1:
-                    result = result.split(':', 1)[1].strip()
                 
                 return result
             except concurrent.futures.TimeoutError:
@@ -230,8 +225,8 @@ def check_and_reinitialize_model():
             return initialize_model()
             
         # Test the existing model with a simple translation
-        test_text = "Translate from English to French: hello"
-        result = translator(test_text, max_length=128)
+        test_text = "hello"
+        result = translator(test_text, src_lang="eng_Latn", tgt_lang="fra_Latn", max_length=128)
         
         # If we got a valid result, model is working fine
         if result and isinstance(result, list) and len(result) > 0:
@@ -388,51 +383,24 @@ async def translate_text_endpoint(request: TranslationRequest):
                     raise Exception("Failed to initialize translation model")
             
             # Format the prompt for the model
-            lang_code_map = {
-                "en": "English", "es": "Spanish", "fr": "French", "de": "German",
-                "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "ar": "Arabic",
-                "ru": "Russian", "pt": "Portuguese", "it": "Italian", "nl": "Dutch"
-            }
+            src_lang_code = f"{source_lang}_Latn" if source_lang != "ar" else f"{source_lang}_Arab"
+            tgt_lang_code = f"{target_lang}_Latn" if target_lang != "ar" else f"{target_lang}_Arab"
             
-            source_lang_name = lang_code_map.get(source_lang.lower(), source_lang)
-            target_lang_name = lang_code_map.get(target_lang.lower(), target_lang)
-            
-            # Create a proper prompt for instruction-based models
-            prompt = f"Translate from {source_lang_name} to {target_lang_name}: {text}"
-            print(f"Using prompt: {prompt}")
-            
-            # Check that translator is callable before proceeding
-            if not callable(translator):
-                print("[DEBUG] Translator is not callable, attempting to reinitialize")
-                success = initialize_model()
-                if not success or not callable(translator):
-                    raise Exception("Translator is not callable after reinitialization")
             print("[DEBUG] Calling translator model...")
             # Use a thread pool to execute the translation with a timeout
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(
                     lambda: translator(
-                        prompt,
-                        max_length=512,
-                        do_sample=False,
-                        temperature=0.7
-                    )
+                        text,
+                        src_lang=src_lang_code,
+                        tgt_lang=tgt_lang_code,
+                        max_length=512
+                    )[0]["translation_text"]
                 )
                 
                 try:
                     result = future.result(timeout=15)
-                    # Check result format before accessing elements
-                    if not result or not isinstance(result, list) or len(result) == 0:
-                        raise Exception(f"Invalid model output format: {result}")
-                        
-                    translation_result = result[0]["generated_text"]
-                    
-                    # Clean up the output - remove any prefix like "Translation:"
-                    prefixes = ["Translation:", "Translation: ", f"{target_lang_name}:", f"{target_lang_name}: "]
-                    for prefix in prefixes:
-                        if translation_result.startswith(prefix):
-                            translation_result = translation_result[len(prefix):].strip()
-                            
+                    translation_result = result
                     print(f"Local model translation result: {translation_result}")
                 except concurrent.futures.TimeoutError:
                     print("Translation timed out after 15 seconds")

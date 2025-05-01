@@ -56,15 +56,16 @@ document.addEventListener('DOMContentLoaded', () => {
         docLoadingIndicator.style.display = 'none';
     }
 
-    // Improve the text form submission handler
+    // Fix the text form submission handler to use correct field IDs
     if (textForm) {
         textForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             clearFeedback();
             
-            const sourceText = document.getElementById('source-text').value.trim();
-            const sourceLang = document.getElementById('text-source-lang').value;
-            const targetLang = document.getElementById('text-target-lang').value;
+            // Use correct field IDs matching the HTML
+            const sourceText = document.getElementById('text-input').value.trim();
+            const sourceLang = document.getElementById('source-lang-text').value;
+            const targetLang = document.getElementById('target-lang-text').value;
             
             if (!sourceText) {
                 displayError('Please enter text to translate');
@@ -72,8 +73,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             try {
-                // Show loading state
-                document.getElementById('text-loading').style.display = 'block';
+                // Show loading state (create it if missing)
+                let textLoading = document.getElementById('text-loading');
+                if (!textLoading) {
+                    textLoading = document.createElement('div');
+                    textLoading.id = 'text-loading';
+                    textLoading.className = 'loading-spinner';
+                    textLoading.innerHTML = 'Translating...';
+                    textForm.appendChild(textLoading);
+                }
+                textLoading.style.display = 'block';
                 
                 // Log payload for debugging
                 console.log('Sending payload:', { text: sourceText, source_lang: sourceLang, target_lang: targetLang });
@@ -91,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 
                 // Hide loading state
-                document.getElementById('text-loading').style.display = 'none';
+                textLoading.style.display = 'none';
                 
                 // Log response status
                 console.log('Response status:', response.status);
@@ -112,13 +121,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 
+                if (!data.translated_text) {
+                    displayError('Translation returned empty text');
+                    return;
+                }
+                
                 textOutput.textContent = data.translated_text;
                 textResultBox.style.display = 'block';
                 
             } catch (error) {
                 console.error('Error:', error);
                 displayError('Network error or invalid response format');
-                document.getElementById('text-loading').style.display = 'none';
+                
+                // Hide loading if it exists
+                const textLoading = document.getElementById('text-loading');
+                if (textLoading) textLoading.style.display = 'none';
             }
         });
     }
