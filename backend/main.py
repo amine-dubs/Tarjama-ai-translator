@@ -178,6 +178,23 @@ def translate_text(text, source_lang, target_lang):
             return use_fallback_translation(text, source_lang, target_lang)
     
     try:
+        # Get full language name for better prompt context
+        source_lang_name = LANGUAGE_MAP.get(source_lang, source_lang)
+        
+        # Create a culturally-aware prompt with focus on Arabic eloquence (Balagha)
+        if target_lang == "ar":
+            prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
+Focus on conveying the meaning elegantly using proper Balagha (Arabic eloquence).
+Adapt any cultural references or idioms appropriately rather than translating literally.
+Ensure the translation reads naturally to a native Arabic speaker.
+
+Text to translate:
+{text}"""
+            print("Using culturally-aware prompt for Arabic translation with Balagha focus")
+        else:
+            # For non-Arabic target languages, use standard approach
+            prompt = text
+            
         # Prepare input with explicit instruction format for better results with NLLB
         src_lang_code = f"{source_lang}_Latn" if source_lang != "ar" else f"{source_lang}_Arab"
         tgt_lang_code = f"{target_lang}_Latn" if target_lang != "ar" else f"{target_lang}_Arab"
@@ -186,16 +203,20 @@ def translate_text(text, source_lang, target_lang):
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
                 lambda: translator(
-                    text, 
+                    prompt,  # Using our enhanced prompt instead of raw text
                     src_lang=src_lang_code,
                     tgt_lang=tgt_lang_code,
-                    max_length=512
+                    max_length=768  # Increased max_length to accommodate longer prompt
                 )[0]["translation_text"]
             )
             
             try:
                 # Set a reasonable timeout (15 seconds instead of 10)
                 result = future.result(timeout=15)
+                
+                # Post-process the result for Arabic cultural adaptation
+                if target_lang == "ar":
+                    result = culturally_adapt_arabic(result)
                 
                 return result
             except concurrent.futures.TimeoutError:
@@ -212,6 +233,24 @@ def translate_text(text, source_lang, target_lang):
         print(f"Error using local model: {e}")
         traceback.print_exc()
         return use_fallback_translation(text, source_lang, target_lang)
+
+def culturally_adapt_arabic(text: str) -> str:
+    """Apply post-processing rules to enhance Arabic translation with cultural sensitivity."""
+    # Replace Latin punctuation with Arabic ones
+    text = text.replace('?', '؟').replace(';', '؛').replace(',', '،')
+    
+    # If the text starts with common translation artifacts like "Translation:" or the prompt instructions, remove them
+    common_prefixes = [
+        "الترجمة:", "ترجمة:", "النص المترجم:", 
+        "Translation:", "Arabic translation:"
+    ]
+    for prefix in common_prefixes:
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+    
+    # Additional cultural adaptations can be added here
+    
+    return text
 
 # --- Function to check model status and trigger re-initialization if needed ---
 def check_and_reinitialize_model():
@@ -287,12 +326,6 @@ def use_fallback_translation(text, source_lang, target_lang):
     
     # Final fallback - return original text with error message
     return f"[Translation failed] {text}"
-
-def culturally_adapt_arabic(text: str) -> str:
-    """Apply post-processing rules to enhance Arabic translation with cultural sensitivity."""
-    # Replace any Latin punctuation with Arabic ones
-    text = text.replace('?', '؟').replace(';', '؛').replace(',', '،')
-    return text
 
 # --- Helper Functions ---
 async def extract_text_from_file(file: UploadFile) -> str:
