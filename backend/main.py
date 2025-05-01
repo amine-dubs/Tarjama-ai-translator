@@ -404,104 +404,18 @@ async def translate_text_endpoint(request: TranslationRequest):
         
         print(f"[DEBUG] Received request: source_lang={source_lang}, target_lang={target_lang}, text={text[:50]}")
         
-        translation_result = ""
-        error_message = None
+        # Call our culturally-aware translate_text function
+        translation_result = translate_text(text, source_lang, target_lang)
         
-        try:
-            # Check if translator is initialized, if not, initialize it
-            if translator is None:
-                print("[DEBUG] Translator not initialized. Attempting to initialize model...")
-                success = initialize_model()
-                if not success:
-                    raise Exception("Failed to initialize translation model")
+        # Check for empty result
+        if not translation_result or translation_result.strip() == "":
+            print("[DEBUG] Empty translation result received")
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "error": "Translation returned empty result"}
+            )
             
-            # Format the prompt for the model
-            src_lang_code = f"{source_lang}_Latn" if source_lang != "ar" else f"{source_lang}_Arab"
-            tgt_lang_code = f"{target_lang}_Latn" if target_lang != "ar" else f"{target_lang}_Arab"
-            
-            print("[DEBUG] Calling translator model...")
-            # Use a thread pool to execute the translation with a timeout
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    lambda: translator(
-                        text,
-                        src_lang=src_lang_code,
-                        tgt_lang=tgt_lang_code,
-                        max_length=512
-                    )[0]["translation_text"]
-                )
-                
-                try:
-                    result = future.result(timeout=15)
-                    translation_result = result
-                    print(f"Local model translation result: {translation_result}")
-                except concurrent.futures.TimeoutError:
-                    print("Translation timed out after 15 seconds")
-                    raise Exception("Translation timed out")
-                except Exception as e:
-                    print(f"Error using local model: {str(e)}")
-                    raise Exception(f"Error using local model: {str(e)}")
-        
-        except Exception as e:
-            error_message = str(e)
-            print(f"Error using local model: {error_message}")
-            
-            # Try the fallback options
-            try:
-                # Try LibreTranslate providers
-                libre_apis = [
-                    "https://translate.terraprint.co/translate",
-                    "https://libretranslate.de/translate",
-                    "https://translate.argosopentech.com/translate",
-                    "https://translate.fedilab.app/translate"
-                ]
-                
-                for api_url in libre_apis:
-                    try:
-                        print(f"Attempting fallback translation using LibreTranslate: {api_url}")
-                        payload = {
-                            "q": text,
-                            "source": source_lang,
-                            "target": target_lang,
-                            "format": "text",
-                            "api_key": ""
-                        }
-                        headers = {"Content-Type": "application/json"}
-                        response = requests.post(api_url, json=payload, headers=headers, timeout=5)
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            if "translatedText" in result:
-                                translation_result = result["translatedText"]
-                                print(f"LibreTranslate successful: {translation_result}")
-                                break
-                    except Exception as libre_error:
-                        print(f"Error with LibreTranslate {api_url}: {str(libre_error)}")
-                
-                # If LibreTranslate failed, try Google Translate
-                if not translation_result:
-                    try:
-                        # First try to import it
-                        try:
-                            from googletrans import Translator
-                            google_translator = Translator()
-                            result = google_translator.translate(text, src=source_lang, dest=target_lang)
-                            translation_result = result.text
-                            print(f"Google Translate successful: {translation_result}")
-                        except ImportError:
-                            print("googletrans package not installed, attempting to install...")
-                            subprocess.call([sys.executable, "-m", "pip", "install", "googletrans==4.0.0-rc1"])
-                            # After installation, try again
-                            from googletrans import Translator
-                            google_translator = Translator()
-                            result = google_translator.translate(text, src=source_lang, dest=target_lang)
-                            translation_result = result.text
-                    except Exception as google_error:
-                        print(f"Error with Google Translate fallback: {str(google_error)}")
-            except Exception as e:
-                print(f"Error with fallback translation: {str(e)}")
-                translation_result = f"[Translation failed during fallback] {text}"
-
+        print(f"[DEBUG] Translation successful: {translation_result[:100]}...")
         return {"success": True, "translated_text": translation_result}
     
     except Exception as e:

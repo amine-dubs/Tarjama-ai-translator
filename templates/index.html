@@ -5,6 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Translator</title>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Add some styling for better visibility of debug and error messages */
+        #error-message {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #ef9a9a;
+            display: none;
+        }
+        #debug-info {
+            background-color: #e3f2fd;
+            color: #1565c0;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #90caf9;
+            font-family: monospace;
+            white-space: pre-wrap;
+            display: none;
+        }
+        .loading-spinner {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e8f5e9;
+            border-radius: 4px;
+            border: 1px solid #a5d6a7;
+            display: none;
+        }
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            display: none;
+        }
+    </style>
 </head>
 <body>
     <h1>AI Translation Service</h1>
@@ -33,6 +71,7 @@
                  </select>
             </div>
             <textarea id="text-input" name="text" placeholder="Enter text to translate..."></textarea>
+            <div id="text-loading" class="loading-spinner">Translating...</div>
             <button type="submit">Translate Text</button>
         </form>
         <div id="text-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
@@ -40,6 +79,10 @@
             <pre><code id="text-output"></code></pre>
         </div>
     </div>
+
+    <!-- Add debug info container -->
+    <div id="debug-info"></div>
+    <div id="error-message" class="error-box"></div>
 
     <div class="container">
         <h2>Document Translation</h2>
@@ -85,8 +128,6 @@
             <pre><code id="doc-output"></code></pre>
         </div>
     </div>
-
-    <div id="error-message" class="error-box" style="display: none;"></div>
 
     <script src="/static/script.js"></script>
 </body>

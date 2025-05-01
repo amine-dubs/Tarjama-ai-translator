@@ -12,3 +12,6 @@ tensorflow
 tf-keras
 hf_xet
 accelerate
+docx
+BytesIO
+fitz

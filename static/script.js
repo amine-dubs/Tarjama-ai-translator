@@ -9,6 +9,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const docSourceLang = document.getElementById('doc-source-lang');
     const errorMessageDiv = document.getElementById('error-message');
     const docLoadingIndicator = document.getElementById('doc-loading');
+    const debugInfoDiv = document.getElementById('debug-info');
+    const textLoadingDiv = document.getElementById('text-loading');
+    
+    // Helper function to display debug info
+    function showDebug(message, data = null) {
+        let debugText = typeof message === 'string' ? message : JSON.stringify(message);
+        
+        if (data) {
+            debugText += '\n' + JSON.stringify(data, null, 2);
+        }
+        
+        console.log("DEBUG:", message, data || '');
+        debugInfoDiv.textContent = debugText;
+        debugInfoDiv.style.display = 'block';
+    }
     
     // Helper function to display errors
     function displayError(message) {
@@ -38,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error("Error details:", message);
         errorMessageDiv.textContent = errorText;
         errorMessageDiv.style.display = 'block';
+        
         // Hide result boxes on error
         textResultBox.style.display = 'none';
         docResultBox.style.display = 'none';
@@ -54,9 +70,11 @@ document.addEventListener('DOMContentLoaded', () => {
         docFilename.textContent = '';
         docSourceLang.textContent = '';
         docLoadingIndicator.style.display = 'none';
+        debugInfoDiv.style.display = 'none';
+        debugInfoDiv.textContent = '';
     }
 
-    // Fix the text form submission handler to use correct field IDs
+    // Fix the text form submission handler
     if (textForm) {
         textForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -73,39 +91,42 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             try {
-                // Show loading state (create it if missing)
-                let textLoading = document.getElementById('text-loading');
-                if (!textLoading) {
-                    textLoading = document.createElement('div');
-                    textLoading.id = 'text-loading';
-                    textLoading.className = 'loading-spinner';
-                    textLoading.innerHTML = 'Translating...';
-                    textForm.appendChild(textLoading);
-                }
-                textLoading.style.display = 'block';
+                // Show loading state 
+                textLoadingDiv.style.display = 'block';
                 
                 // Log payload for debugging
-                console.log('Sending payload:', { text: sourceText, source_lang: sourceLang, target_lang: targetLang });
+                const payload = { 
+                    text: sourceText, 
+                    source_lang: sourceLang, 
+                    target_lang: targetLang 
+                };
+                showDebug('Sending translation request', payload);
                 
                 const response = await fetch('/translate/text', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        text: sourceText,
-                        source_lang: sourceLang,
-                        target_lang: targetLang
-                    })
+                    body: JSON.stringify(payload)
                 });
                 
-                // Hide loading state
-                textLoading.style.display = 'none';
-                
                 // Log response status
-                console.log('Response status:', response.status);
+                showDebug(`Response status: ${response.status}`);
                 
-                const data = await response.json();
+                // Get the raw response text first for debugging
+                const responseText = await response.text();
+                showDebug('Raw response:', responseText);
+                
+                // Then parse it as JSON
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (jsonError) {
+                    throw new Error(`Invalid JSON response: ${responseText}`);
+                }
+                
+                // Hide loading state
+                textLoadingDiv.style.display = 'none';
                 
                 if (!response.ok) {
                     if (data && data.error) {
@@ -131,80 +152,85 @@ document.addEventListener('DOMContentLoaded', () => {
                 
             } catch (error) {
                 console.error('Error:', error);
-                displayError('Network error or invalid response format');
+                displayError(`Network error: ${error.message}`);
                 
-                // Hide loading if it exists
-                const textLoading = document.getElementById('text-loading');
-                if (textLoading) textLoading.style.display = 'none';
+                // Hide loading
+                textLoadingDiv.style.display = 'none';
             }
         });
+    } else {
+        console.error("Text translation form not found in the document!");
     }
 
     // Handle Document Translation Form Submission
-    docForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        clearFeedback();
+    if (docForm) {
+        docForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            clearFeedback();
 
-        const formData = new FormData(docForm);
-        const fileInput = document.getElementById('doc-input');
-        const button = docForm.querySelector('button');
+            const formData = new FormData(docForm);
+            const fileInput = document.getElementById('doc-input');
+            const button = docForm.querySelector('button');
 
-        if (!fileInput.files || fileInput.files.length === 0) {
-            displayError('Please select a document to upload.');
-            return;
-        }
+            if (!fileInput.files || fileInput.files.length === 0) {
+                displayError('Please select a document to upload.');
+                return;
+            }
 
-        button.disabled = true;
-        button.textContent = 'Translating...';
-        // Show loading indicator
-        docLoadingIndicator.style.display = 'block';
+            button.disabled = true;
+            button.textContent = 'Translating...';
+            // Show loading indicator
+            docLoadingIndicator.style.display = 'block';
 
-        try {
-            const response = await fetch('/translate/document', {
-                method: 'POST',
-                body: formData // FormData handles multipart/form-data automatically
-            });
-
-            // Get response as text first for debugging
-            const responseText = await response.text();
-            console.log('Raw document response:', responseText);
-            
-            // Try to parse as JSON
-            let result;
             try {
-                result = JSON.parse(responseText);
-            } catch (jsonError) {
-                throw new Error(`Failed to parse server response: ${responseText}`);
-            }
+                const response = await fetch('/translate/document', {
+                    method: 'POST',
+                    body: formData // FormData handles multipart/form-data automatically
+                });
 
-            if (!response.ok) {
-                const errorMessage = result.error || result.detail || `HTTP error! status: ${response.status}`;
-                throw new Error(errorMessage);
-            }
-            
-            console.log('Document translation response:', result);
-            
-            // Check if result contains the expected fields
-            if (!result.translated_text) {
-                throw new Error('Translation response is missing translated text');
-            }
-            
-            docFilename.textContent = result.original_filename || 'N/A';
-            docSourceLang.textContent = result.detected_source_lang || 'N/A';
-            docOutput.textContent = result.translated_text;
-            docResultBox.style.display = 'block';
-            
-            // Set text direction based on target language (document always goes to Arabic)
-            docOutput.dir = 'rtl';
+                // Get response as text first for debugging
+                const responseText = await response.text();
+                showDebug('Raw document response:', responseText);
+                
+                // Try to parse as JSON
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (jsonError) {
+                    throw new Error(`Failed to parse server response: ${responseText}`);
+                }
 
-        } catch (error) {
-            console.error('Document translation error:', error);
-            displayError(error.message || 'An unexpected error occurred during document translation.');
-        } finally {
-            button.disabled = false;
-            button.textContent = 'Translate Document';
-            // Hide loading indicator
-            docLoadingIndicator.style.display = 'none';
-        }
-    });
+                if (!response.ok) {
+                    const errorMessage = result.error || result.detail || `HTTP error! status: ${response.status}`;
+                    throw new Error(errorMessage);
+                }
+                
+                showDebug('Document translation response:', result);
+                
+                // Check if result contains the expected fields
+                if (!result.translated_text) {
+                    throw new Error('Translation response is missing translated text');
+                }
+                
+                docFilename.textContent = result.original_filename || 'N/A';
+                docSourceLang.textContent = result.detected_source_lang || 'N/A';
+                docOutput.textContent = result.translated_text;
+                docResultBox.style.display = 'block';
+                
+                // Set text direction based on target language (document always goes to Arabic)
+                docOutput.dir = 'rtl';
+
+            } catch (error) {
+                console.error('Document translation error:', error);
+                displayError(error.message || 'An unexpected error occurred during document translation.');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Translate Document';
+                // Hide loading indicator
+                docLoadingIndicator.style.display = 'none';
+            }
+        });
+    } else {
+        console.error("Document translation form not found in the document!");
+    }
 });
