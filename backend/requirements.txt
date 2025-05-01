@@ -9,9 +9,5 @@ transformers
 torch
 sentencepiece
 tensorflow
-tf-keras
-hf_xet
+googletrans==4.0.0-rc1
 accelerate
-docx
-BytesIO
-fitz
