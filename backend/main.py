@@ -725,52 +725,132 @@ async def download_translated_document(request: Request):
             )
         
         elif filename.endswith('.pdf'):
-            # Create PDF file with proper font for Arabic
             try:
                 import fitz  # PyMuPDF
                 from io import BytesIO
+                import tempfile
+                import os
                 
-                # Create a new PDF document
-                doc = fitz.open()
-                page = doc.new_page()
+                # Check if text contains Arabic
+                has_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
                 
-                # Use a font that supports Arabic
-                # First try to find an installed Arabic font
-                fontname = None
-                arabic_fonts = ["Arial", "Arial Unicode MS", "Times New Roman", "Tahoma", "Calibri"]
-                for font in arabic_fonts:
+                # For Arabic PDFs, we'll try a special approach:
+                # 1. Create a temporary HTML file with the Arabic text
+                # 2. Use PyMuPDF to convert the HTML to PDF
+                
+                # Create a temporary HTML file with proper RTL styling
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w', encoding='utf-8') as temp_html:
+                    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {{ size: A4; margin: 2cm; }}
+        body {{ 
+            font-family: Arial, 'Times New Roman', sans-serif;
+            font-size: 12pt;
+            {'direction: rtl; text-align: right;' if has_arabic else 'direction: ltr; text-align: left;'}
+        }}
+    </style>
+</head>
+<body>
+    <div>
+        {content.replace('\n', '<br>')}
+    </div>
+</body>
+</html>"""
+                    temp_html.write(html_content)
+                    html_path = temp_html.name
+                
+                try:
+                    # Create a new PDF document from the HTML
+                    doc = fitz.open()
+                    pdf_bytes = BytesIO()
+                    
                     try:
-                        fontname = font
-                        break
+                        # Try converting HTML to PDF using PyMuPDF
+                        html_doc = fitz.open("html", html_content)
+                        doc.insert_pdf(html_doc)
+                    except Exception as html_err:
+                        print(f"HTML conversion failed: {html_err}")
+                        
+                        # Fallback: Create a simple PDF with basic text
+                        page = doc.new_page()
+                        
+                        # For right-to-left text like Arabic
+                        if has_arabic:
+                            # Add text as blocks from right to left
+                            blocks = content.split("\n")
+                            y_pos = 50
+                            for block in blocks:
+                                if block.strip():
+                                    rect = fitz.Rect(50, y_pos, page.rect.width - 50, y_pos + 20)
+                                    page.insert_text(rect.tl, block, fontsize=11, 
+                                                    fontname="helv", right_to_left=True)
+                                    y_pos += 20
+                        else:
+                            # For left-to-right text
+                            page.insert_text((50, 50), content, fontsize=11)
+                    
+                    # Save the PDF
+                    doc.save(pdf_bytes)
+                    doc.close()
+                    
+                    # Clean up the temporary HTML file
+                    try:
+                        os.unlink(html_path)
                     except:
-                        continue
-                
-                # Set font parameters explicitly for Arabic text
-                fontsize = 11
-                # Insert text into the PDF with specific parameters for right-to-left text
-                text_rect = fitz.Rect(50, 50, page.rect.width - 50, page.rect.height - 50)
-                
-                # Create a text writer with RTL direction for Arabic
-                tw = fitz.TextWriter(page.rect)
-                tw.append(text_rect.tl, content, fontname=fontname, fontsize=fontsize)
-                tw.write_text(page)
-                
-                # Save to bytes
-                pdf_bytes = BytesIO()
-                doc.save(pdf_bytes)
-                doc.close()
-                
-                # Return as attachment with proper encoding
-                from fastapi.responses import Response
-                return Response(
-                    content=pdf_bytes.getvalue(),
-                    media_type="application/pdf",
-                    headers={"Content-Disposition": f"attachment; filename={filename}"}
-                )
+                        pass
+                    
+                    # Return as attachment
+                    from fastapi.responses import Response
+                    return Response(
+                        content=pdf_bytes.getvalue(),
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": f"attachment; filename={filename}"}
+                    )
+                except Exception as pdf_err:
+                    print(f"PDF generation error: {pdf_err}")
+                    traceback.print_exc()
+                    
+                    # If PDF generation failed, try an even simpler approach
+                    # Just create a plain text PDF
+                    try:
+                        doc = fitz.open()
+                        page = doc.new_page()
+                        font = "helv"  # Built-in font with reasonable Unicode support
+                        page.insert_text((50, 50), content, fontname=font, fontsize=11)
+                        
+                        pdf_bytes = BytesIO()
+                        doc.save(pdf_bytes)
+                        doc.close()
+                        
+                        return Response(
+                            content=pdf_bytes.getvalue(),
+                            media_type="application/pdf",
+                            headers={"Content-Disposition": f"attachment; filename={filename}"}
+                        )
+                    except:
+                        # If all PDF approaches fail, fall back to plain text
+                        return Response(
+                            content=content.encode('utf-8'),
+                            media_type="text/plain; charset=utf-8",
+                            headers={
+                                "Content-Disposition": f"attachment; filename={filename.replace('.pdf', '.txt')}",
+                                "Content-Type": "text/plain; charset=utf-8"
+                            }
+                        )
             except ImportError:
                 return JSONResponse(
                     status_code=501,
                     content={"success": False, "error": "PDF creation requires PyMuPDF library"}
+                )
+            except Exception as e:
+                print(f"PDF creation error: {str(e)}")
+                traceback.print_exc()
+                return JSONResponse(
+                    status_code=500,
+                    content={"success": False, "error": f"PDF creation failed: {str(e)}"}
                 )
                 
         elif filename.endswith('.docx'):
@@ -784,8 +864,13 @@ async def download_translated_document(request: Request):
                 
                 # Add a paragraph with the translated content
                 p = doc.add_paragraph()
-                # Set paragraph direction to right-to-left for Arabic
-                p._element.get_or_add_pPr().set('bidi', True)  # Set RTL direction
+                # Set paragraph direction to right-to-left for Arabic if needed
+                is_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
+                if is_arabic:
+                    try:
+                        p._element.get_or_add_pPr().set('bidi', True)  # Set RTL direction
+                    except:
+                        pass  # If this fails, continue with default direction
                 p.add_run(content)
                 
                 # Save to bytes
@@ -806,11 +891,10 @@ async def download_translated_document(request: Request):
                     content={"success": False, "error": "DOCX creation requires python-docx library"}
                 )
             except Exception as e:
-                # Additional error info for DOCX creation
-                print(f"Error in DOCX creation: {str(e)}")
+                print(f"DOCX creation error: {str(e)}")
                 traceback.print_exc()
                 return JSONResponse(
-                    status_code=500, 
+                    status_code=500,
                     content={"success": False, "error": f"DOCX creation error: {str(e)}"}
                 )
         
