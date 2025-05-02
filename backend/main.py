@@ -730,8 +730,6 @@ async def download_translated_document(request: Request):
             try:
                 import fitz  # PyMuPDF
                 from io import BytesIO
-                import tempfile
-                import os
                 
                 # Create a new PDF document
                 doc = fitz.open()
@@ -740,45 +738,72 @@ async def download_translated_document(request: Request):
                 # Check if text contains Arabic
                 has_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
                 
-                # Simple PDF creation approach - works with most PyMuPDF versions
+                # Use a plain and simple approach that works across PyMuPDF versions
                 try:
-                    # For right-to-left text like Arabic
-                    if has_arabic:
-                        # Add text as blocks with appropriate alignment
-                        blocks = content.split("\n")
-                        y_pos = 50
-                        for block in blocks:
-                            if block.strip():
-                                # Create text with proper alignment for Arabic
-                                # Note: removed the right_to_left parameter as it's not supported
-                                rect = fitz.Rect(50, y_pos, page.rect.width - 50, y_pos + 20)
-                                # For Arabic, align text to the right side of the rectangle
-                                if has_arabic:
-                                    page.insert_text(rect.tr, block, fontsize=11, fontname="helv")
-                                else:
-                                    page.insert_text(rect.tl, block, fontsize=11, fontname="helv")
-                                y_pos += 20
-                    else:
-                        # For left-to-right text
-                        page.insert_text((50, 50), content, fontsize=11, fontname="helv")
-                
+                    font = "helv"  # Default PyMuPDF font with basic Unicode support
+                    rect = fitz.Rect(72, 72, page.rect.width - 72, page.rect.height - 72)
+                    
+                    # Important: Break the content into shorter lines for better handling
+                    lines = content.split('\n')
+                    y_pos = 72  # Starting y position
+                    
+                    for line in lines:
+                        if line.strip():
+                            # Explicitly encode line as UTF-8 if it contains Arabic
+                            text_to_insert = line
+                            if has_arabic:
+                                # For Arabic text, position on right side of page
+                                page.insert_text(
+                                    point=(page.rect.width - 72, y_pos),  # Right-aligned position
+                                    text=text_to_insert,
+                                    fontname=font,
+                                    fontsize=11,
+                                    color=(0, 0, 0),  # Black text
+                                    rotate=0,
+                                    align=1  # Right alignment (1=right, 0=left, 2=center)
+                                )
+                            else:
+                                # For non-Arabic text
+                                page.insert_text(
+                                    point=(72, y_pos),
+                                    text=text_to_insert,
+                                    fontname=font,
+                                    fontsize=11
+                                )
+                        # Move to next line
+                        y_pos += 14  # Line spacing
                 except Exception as e:
-                    print(f"Error inserting text: {e}")
-                    # Most basic approach if all else fails
-                    page.insert_text((50, 50), content, fontsize=11)
+                    print(f"Error inserting text into PDF: {e}")
+                    traceback.print_exc()
                 
-                # Save the PDF
+                # Save PDF to a BytesIO buffer
                 pdf_bytes = BytesIO()
                 doc.save(pdf_bytes)
+                pdf_bytes.seek(0)  # Important: Reset position to start of buffer
                 doc.close()
                 
-                # Return as attachment
+                # Log PDF size for debugging
+                pdf_size = len(pdf_bytes.getvalue())
+                print(f"Generated PDF size: {pdf_size} bytes")
+                
+                if pdf_size == 0:
+                    print("WARNING: Generated PDF has zero size!")
+                    # Return a plain text version as fallback
+                    return Response(
+                        content=content.encode('utf-8'),
+                        media_type="text/plain; charset=utf-8", 
+                        headers={
+                            "Content-Disposition": f"attachment; filename={filename.replace('.pdf', '.txt')}",
+                            "Content-Type": "text/plain; charset=utf-8"
+                        }
+                    )
+                
+                # Return PDF content
                 return Response(
                     content=pdf_bytes.getvalue(),
                     media_type="application/pdf",
                     headers={"Content-Disposition": f"attachment; filename={filename}"}
                 )
-                
             except ImportError:
                 return JSONResponse(
                     status_code=501,
@@ -787,7 +812,7 @@ async def download_translated_document(request: Request):
             except Exception as e:
                 print(f"PDF creation error: {str(e)}")
                 traceback.print_exc()
-                # Return a text file instead
+                # Return a text file as fallback
                 return Response(
                     content=content.encode('utf-8'),
                     media_type="text/plain; charset=utf-8",

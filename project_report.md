@@ -479,7 +479,7 @@ function triggerDownload(url, filename) {
 
 ### 6.1. Dockerization
 
-*   **Base Image:** Uses an official `python:3.9-slim` image for a smaller footprint.
+*   **Base Image:** Uses an official `python:3.12-slim` image for a smaller footprint.
 *   **Dependency Management:** Copies `requirements.txt` and installs dependencies early to leverage Docker caching.
 *   **Code Copying:** Copies the necessary application code (`backend`, `templates`, `static`) into the container.
 *   **Directory Creation:** Ensures necessary directories (`templates`, `static`, `uploads`) exist within the container.
