@@ -125,6 +125,19 @@ translation_models: Dict[str, Dict] = {
         "translator": None,
         "model_name": "Helsinki-NLP/opus-mt-de-en",
     },
+    "ar-fr": {
+        "model": None,
+        "tokenizer": None,
+        "translator": None,
+        "model_name": "Helsinki-NLP/opus-mt-ar-fr",
+    },
+    "fr-ar": {
+        "model": None,
+        "tokenizer": None,
+        "translator": None,
+        "model_name": "Helsinki-NLP/opus-mt-fr-ar",
+    },
+    
     # Can add more language pairs here as needed
 }
 

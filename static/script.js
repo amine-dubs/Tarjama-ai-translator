@@ -15,7 +15,7 @@ window.onload = function() {
     // UI elements
     const textInput = document.getElementById('text-input');
     const textResult = document.getElementById('text-result');
-    const docResult = document.getElementById('document-translation');
+    const docResult = document.getElementById('doc-result');
     const textOutput = document.getElementById('text-output');
     const docOutput = document.getElementById('doc-output');
     const docInputText = document.getElementById('doc-input-text');
