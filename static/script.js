@@ -44,86 +44,101 @@ window.onload = function() {
         if (errorElement) errorElement.style.display = 'none';
         if (debugElement) debugElement.style.display = 'none';
         
-        // --- CRITICAL RE-FETCH AND CHECK ---
-        // Re-fetch the element *right before* using it inside the handler
+        // --- ULTRA-DEFENSIVE CHECK ---
         const currentTextInput = document.getElementById('text-input');
-        console.log('Re-fetched #text-input inside handler:', currentTextInput);
+        console.log('[DEBUG] Element fetched inside handler:', currentTextInput);
         
-        // Check if it's null *immediately* before accessing .value
         if (!currentTextInput) {
-            console.error('FATAL: document.getElementById(\'text-input\') returned null INSIDE the submit handler!');
-            showError('Internal error: Text input element disappeared unexpectedly. Check console.');
-            return; // Stop execution
-        }
-        // --- END CRITICAL CHECK ---
-        
-        // Get values
-        // Use the locally fetched element reference
-        const text = currentTextInput.value ? currentTextInput.value.trim() : ''; 
-        if (!text) {
-            showError('Please enter text to translate');
+            console.error('FATAL: getElementById(\'text-input\') returned null INSIDE handler.');
+            showError('Internal error: Text input element not found.');
             return;
-        }
-        
-        // Fetch other elements needed here (can also use stored references if they are reliable)
-        const sourceLangValue = sourceLangText ? sourceLangText.value : null;
-        const targetLangValue = targetLangText ? targetLangText.value : null;
-
-        if (!sourceLangValue || !targetLangValue) {
-            console.error('Source or Target language select element is null inside handler!');
-            showError('Internal error: Language select element missing.');
-            return;
-        }
-        
-        // Show loading indicator
-        if (textLoadingElement) textLoadingElement.style.display = 'block';
-        
-        // Create payload
-        const payload = {
-            text: text,
-            source_lang: sourceLangValue,
-            target_lang: targetLangValue
-        };
-        
-        console.log('Sending payload:', payload);
-        
-        // Send API request
-        fetch('/translate/text', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) throw new Error('Server error: ' + response.status);
-            return response.text(); // Get raw text first
-        })
-        .then(responseText => {
-            console.log('Response received:', responseText);
-            let data;
+        } else {
+            console.log('[DEBUG] Element IS NOT NULL. Type:', typeof currentTextInput);
             try {
-                data = JSON.parse(responseText);
-            } catch (error) {
-                console.error("Failed to parse JSON:", responseText);
-                throw new Error('Invalid response format from server');
+                console.log('[DEBUG] Element outerHTML:', currentTextInput.outerHTML);
+            } catch (e) {
+                console.error('[DEBUG] Error accessing outerHTML:', e);
             }
             
-            if (!data.success || !data.translated_text) {
-                throw new Error(data.error || 'No translation returned or success flag false');
+            // Now try accessing the value
+            let text = '';
+            try {
+                console.log('[DEBUG] Attempting to access .value...');
+                text = currentTextInput.value ? currentTextInput.value.trim() : '';
+                console.log('[DEBUG] Accessed .value successfully. Value:', text);
+            } catch (e) {
+                console.error('FATAL: Error occurred accessing .value:', e);
+                console.error('[DEBUG] Element state just before error:', currentTextInput);
+                showError('Internal error: Failed to read text input value. Check console.');
+                return; // Stop execution
+            }
+            // --- END ULTRA-DEFENSIVE CHECK ---
+            
+            if (!text) {
+                showError('Please enter text to translate');
+                return;
             }
             
-            // Show result
-            if (textResultBox && textOutputElement) {
-                textOutputElement.textContent = data.translated_text;
-                textResultBox.style.display = 'block';
+            // Fetch other elements needed here
+            const sourceLangValue = sourceLangText ? sourceLangText.value : null;
+            const targetLangValue = targetLangText ? targetLangText.value : null;
+
+            if (!sourceLangValue || !targetLangValue) {
+                console.error('Source or Target language select element is null inside handler!');
+                showError('Internal error: Language select element missing.');
+                return;
             }
-        })
-        .catch(error => {
-            showError(error.message || 'Translation failed');
-            console.error('Error:', error);
-        })
-        .finally(() => {
-            if (textLoadingElement) textLoadingElement.style.display = 'none';
-        });
+            
+            // Show loading indicator
+            if (textLoadingElement) textLoadingElement.style.display = 'block';
+            
+            // Create payload
+            const payload = {
+                text: text,
+                source_lang: sourceLangValue,
+                target_lang: targetLangValue
+            };
+            
+            console.log('Sending payload:', payload);
+            
+            // Send API request
+            fetch('/translate/text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+                return response.text(); // Get raw text first
+            })
+            .then(responseText => {
+                console.log('Response received:', responseText);
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (error) {
+                    console.error("Failed to parse JSON:", responseText);
+                    throw new Error('Invalid response format from server');
+                }
+                
+                if (!data.success || !data.translated_text) {
+                    throw new Error(data.error || 'No translation returned or success flag false');
+                }
+                
+                // Show result
+                if (textResultBox && textOutputElement) {
+                    textOutputElement.textContent = data.translated_text;
+                    textResultBox.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                showError(error.message || 'Translation failed');
+                console.error('Error:', error);
+            })
+            .finally(() => {
+                if (textLoadingElement) textLoadingElement.style.display = 'none';
+            });
+        }
     });
     
     // Document translation handler
