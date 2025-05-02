@@ -340,19 +340,18 @@ window.onload = function() {
         docTranslationForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
-            const file = document.getElementById('doc-input').files[0];
-            if (!file) {
+            const fileInput = document.getElementById('doc-input');
+            if (!fileInput.files || fileInput.files.length === 0) {
                 showError('Please select a document to translate.');
                 return;
             }
             
-            const sourceLang = document.getElementById('doc-source-lang').value;
-            const targetLang = document.getElementById('doc-target-lang').value;
+            const file = fileInput.files[0];
+            const sourceLang = sourceLangDoc.value;
+            const targetLang = targetLangDoc.value;
             
             translateDocument(file, sourceLang, targetLang);
         });
-    } else {
-        console.error('Document translation form not found.');
     }
     
     // File drag and drop 
@@ -573,78 +572,42 @@ window.onload = function() {
     
     // Function to download translated document
     function downloadTranslatedDocument(content, fileName, fileType) {
-        // Determine file extension
-        let extension = fileName.endsWith('.pdf') ? '.pdf' : 
-                        fileName.endsWith('.docx') ? '.docx' : '.txt';
+        console.log('Downloading translated document:', fileName, fileType);
+        // Determine the file extension
+        let extension = '';
+        if (fileName.toLowerCase().endsWith('.pdf')) {
+            extension = '.pdf';
+        } else if (fileName.toLowerCase().endsWith('.docx')) {
+            extension = '.docx';
+        } else if (fileName.toLowerCase().endsWith('.txt')) {
+            extension = '.txt';
+        } else {
+            extension = '.txt'; // Default to txt
+        }
         
-        // Create translated filename
+        // Create file name for translated document
         const baseName = fileName.substring(0, fileName.lastIndexOf('.'));
         const translatedFileName = `${baseName}_translated${extension}`;
         
-        // For PDF files, try the browser's native PDF generation when it contains Arabic
-        if (extension === '.pdf' && /[\u0600-\u06FF]/.test(content)) {
-            console.log('Using browser PDF generation for Arabic content');
-            
-            // Create HTML for printing
-            const printWindow = window.open('', '_blank');
-            
-            if (printWindow) {
-                // Create a document with RTL support for Arabic
-                printWindow.document.write(`
-                    <!DOCTYPE html>
-                    <html dir="rtl">
-                    <head>
-                        <meta charset="UTF-8">
-                        <title>${translatedFileName}</title>
-                        <style>
-                            @page { margin: 1.5cm; }
-                            body {
-                                font-family: 'Arial', 'Segoe UI', 'Tahoma', sans-serif;
-                                line-height: 1.5;
-                                direction: rtl;
-                                text-align: right;
-                                padding: 20px;
-                                font-size: 14pt;
-                            }
-                            .content {
-                                white-space: pre-wrap;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="content">${content}</div>
-                        <script>
-                            // Auto-print and close when done
-                            window.onload = function() {
-                                setTimeout(function() {
-                                    window.print();
-                                    // Wait for print dialog to close
-                                    setTimeout(function() {
-                                        window.close();
-                                    }, 500);
-                                }, 500);
-                            };
-                        </script>
-                    </body>
-                    </html>
-                `);
-                
-                // Show a notification
-                showNotification('Print dialog will open. Select "Save as PDF" option to download your translation.');
-                return;
-            } else {
-                // Fallback if popup is blocked
-                showError('Popup blocked. Please allow popups and try again.');
-            }
-        }
+        // Show notification that download is starting
+        showNotification('Preparing document for download...');
         
+        // For text files, we can download directly from the browser
         if (extension === '.txt') {
-            // Direct browser download for text files
-            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const blob = new Blob([content], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
-            triggerDownload(url, translatedFileName);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = translatedFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showNotification('Document downloaded successfully!');
         } else {
-            // Server-side processing for complex formats
+            // For PDF and DOCX files, we need the server to create them
             fetch('/download/translated-document', {
                 method: 'POST',
                 headers: {
@@ -653,33 +616,46 @@ window.onload = function() {
                 body: JSON.stringify({
                     content: content,
                     filename: translatedFileName,
-                    original_type: fileType
+                    original_type: fileType || 'text/plain'
                 }),
             })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+                    throw new Error(`Server error: ${response.status} ${response.statusText}`);
                 }
                 return response.blob();
             })
             .then(blob => {
-                const url = URL.createObjectURL(blob);
-                triggerDownload(url, translatedFileName);
+                // Create appropriate MIME type based on extension
+                let mimeType;
+                if (extension === '.pdf') {
+                    mimeType = 'application/pdf';
+                } else if (extension === '.docx') {
+                    mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                } else {
+                    mimeType = 'text/plain';
+                }
+                
+                // Create a blob with the correct MIME type
+                const fileBlob = new Blob([blob], { type: mimeType });
+                const url = URL.createObjectURL(fileBlob);
+                
+                // Create and trigger download link
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = translatedFileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showNotification('Document downloaded successfully!');
             })
             .catch(error => {
-                showError(`Error downloading file: ${error.message}`);
+                console.error('Error downloading document:', error);
+                showError(`Download error: ${error.message}`);
             });
         }
-    }
-    
-    function triggerDownload(url, filename) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
     }
     
     // Helper function to get language name from code
