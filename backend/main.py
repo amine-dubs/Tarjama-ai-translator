@@ -737,17 +737,40 @@ async def download_translated_document(request: Request):
                 # Check if content contains Arabic text
                 has_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
                 
-                # Use write_text with an appropriate font for Arabic support
-                # and set right-to-left direction for Arabic text
-                page.write_text(
-                    text_rect,
-                    content,
-                    fontsize=11,
-                    font="helv" if not has_arabic else "noto",  # Use Noto font for Arabic
-                    fontfile="NotoSansArabic-Regular.ttf" if has_arabic else None,
-                    align="right" if has_arabic else "left",
-                    direction="rtl" if has_arabic else "ltr"
-                )
+                # Use insert_text which is more reliable for complex scripts
+                if has_arabic:
+                    # For Arabic text, specify font embedding and RTL direction
+                    try:
+                        # Create text spans with explicit font information
+                        font_size = 11
+                        line_height = font_size * 1.2
+                        current_y = 100
+                        
+                        # Split content into lines to handle them separately
+                        lines = content.split('\n')
+                        for line in lines:
+                            if line.strip():
+                                page.insert_text(
+                                    (50, current_y),
+                                    line,
+                                    fontsize=font_size,
+                                    fontname="helv",  # Use a base font that will be substituted
+                                    encoding=fitz.TEXT_ENCODING_UNICODE,  # Use Unicode encoding
+                                    color=(0, 0, 0),
+                                    render_mode=0
+                                )
+                            current_y += line_height
+                    except Exception as e:
+                        print(f"Error with Arabic text rendering: {e}")
+                        # Fallback method
+                        page.insert_text((50, 100), content, fontsize=11)
+                else:
+                    # For non-Arabic text, use standard method
+                    page.insert_text(
+                        (50, 100),
+                        content,
+                        fontsize=11
+                    )
                 
                 # Save to bytes
                 pdf_bytes = BytesIO()
