@@ -13,3 +13,4 @@ sentencepiece
 tensorflow
 accelerate
 langdetect
+hf_xet
