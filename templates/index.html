@@ -1,133 +1,255 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr"> <!- Default to LTR, can be changed dynamically ->
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Translator</title>
+    <title>Tarjama | Smart Translation Service</title>
     <link rel="stylesheet" href="/static/style.css">
-    <style>
-        /* Add some styling for better visibility of debug and error messages */
-        #error-message {
-            background-color: #ffebee;
-            color: #c62828;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-            border: 1px solid #ef9a9a;
-            display: none;
-        }
-        #debug-info {
-            background-color: #e3f2fd;
-            color: #1565c0;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-            border: 1px solid #90caf9;
-            font-family: monospace;
-            white-space: pre-wrap;
-            display: none;
-        }
-        .loading-spinner {
-            margin: 10px 0;
-            padding: 10px;
-            background-color: #e8f5e9;
-            border-radius: 4px;
-            border: 1px solid #a5d6a7;
-            display: none;
-        }
-        .result-box {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f5f5f5;
-            border-radius: 4px;
-            display: none;
-        }
-    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
-    <h1>AI Translation Service</h1>
-
-    <div class="container">
-        <h2>Direct Text Translation</h2>
-        <form id="text-translation-form">
-            <div class="input-group">
-                <label for="source-lang-text">Source Language:</label>
-                <select id="source-lang-text" name="source_lang">
-                    <option value="en">English</option>
-                    <option value="fr">French</option>
-                    <option value="es">Spanish</option>
-                    <option value="de">German</option>
-                    <option value="ar">Arabic</option> <!- Added Arabic as source ->
-                    <option value="auto">Auto-Detect (Not implemented)</option>
-                    <!- Add more languages as needed ->
-                </select>
-            </div>
-            <div class="input-group">
-                 <label for="target-lang-text">Target Language:</label>
-                 <select id="target-lang-text" name="target_lang">
-                     <option value="ar">Arabic (MSA Fusha)</option>
-                     <!- Add other target languages if reverse translation is implemented ->
-                     <!- <option value="en">English</option> ->
-                 </select>
-            </div>
-            <textarea id="text-input" name="text" placeholder="Enter text to translate..."></textarea>
-            <div id="text-loading" class="loading-spinner">Translating...</div>
-            <button type="submit">Translate Text</button>
-        </form>
-        <div id="text-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
-            <h3>Translation:</h3>
-            <pre><code id="text-output"></code></pre>
+    <header>
+        <div class="logo">
+            <h1><span class="primary-color">Tarjama</span></h1>
+            <p class="tagline">Smart Translation</p>
         </div>
-    </div>
+        <nav>
+            <ul>
+                <li class="active"><a href="#text-translation">Text</a></li>
+                <li><a href="#document-translation">Documents</a></li>
+            </ul>
+        </nav>
+    </header>
 
-    <!-- Add debug info container -->
-    <div id="debug-info"></div>
-    <div id="error-message" class="error-box"></div>
+    <main>
+        <section id="text-translation" class="translation-section">
+            <div class="translation-container">
+                <div class="translation-box">
+                    <div class="language-controls">
+                        <div class="language-selector">
+                            <select id="source-lang-text" name="source_lang" class="lang-select">
+                                <option value="auto">Detect Language</option>
+                                <option value="en">English</option>
+                                <option value="fr">French</option>
+                                <option value="es">Spanish</option>
+                                <option value="de">German</option>
+                                <option value="ar">Arabic</option>
+                                <option value="zh">Chinese</option>
+                                <option value="ru">Russian</option>
+                                <option value="ja">Japanese</option>
+                                <option value="hi">Hindi</option>
+                                <option value="pt">Portuguese</option>
+                                <option value="tr">Turkish</option>
+                                <option value="it">Italian</option>
+                            </select>
+                        </div>
+                        
+                        <div class="swap-languages">
+                            <button type="button" id="swap-languages" aria-label="Swap languages">
+                                <i class="fas fa-exchange-alt"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="language-selector">
+                            <select id="target-lang-text" name="target_lang" class="lang-select">
+                                <option value="ar">Arabic</option>
+                                <option value="en">English</option>
+                                <option value="fr">French</option>
+                                <option value="es">Spanish</option>
+                                <option value="de">German</option>
+                                <option value="zh">Chinese</option>
+                                <option value="ru">Russian</option>
+                                <option value="ja">Japanese</option>
+                                <option value="hi">Hindi</option>
+                                <option value="pt">Portuguese</option>
+                                <option value="tr">Turkish</option>
+                                <option value="it">Italian</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="translation-panels">
+                        <div class="panel source-panel">
+                            <div class="panel-header">
+                                <span class="panel-title">Original Text</span>
+                                <div class="panel-actions">
+                                    <button type="button" id="clear-source" class="icon-button" aria-label="Clear text">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <form id="text-translation-form">
+                                <textarea id="text-input" name="text" placeholder="Enter text to translate..." autofocus></textarea>
+                                <div class="panel-footer">
+                                    <div class="char-count"><span id="char-count">0</span> characters</div>
+                                    <button type="submit" class="translate-button">
+                                        <i class="fas fa-language"></i> Translate
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        
+                        <div class="panel target-panel">
+                            <div class="panel-header">
+                                <span class="panel-title">Translation</span>
+                                <div class="panel-actions">
+                                    <button type="button" id="copy-translation" class="icon-button" aria-label="Copy translation">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="text-result">
+                                <pre><code id="text-output"></code></pre>
+                            </div>
+                            <div id="text-loading" class="loading-indicator">
+                                <div class="spinner"></div>
+                                <span>Translating...</span>
+                            </div>
+                        </div>
+                    </div>
 
-    <div class="container">
-        <h2>Document Translation</h2>
-        <form id="doc-translation-form" enctype="multipart/form-data">
-            <div class="input-group">
-                <label for="source-lang-doc">Source Language:</label>
-                <select id="source-lang-doc" name="source_lang">
-                    <option value="en">English</option>
-                    <option value="fr">French</option>
-                    <option value="es">Spanish</option>
-                    <option value="de">German</option>
-                     <option value="ar">Arabic</option> <!- Added Arabic as source ->
-                    <option value="auto">Auto-Detect (Not implemented)</option>
-                    <!- Add more languages as needed ->
-                </select>
-            </div>
-             <div class="input-group">
-                 <label for="target-lang-doc">Target Language:</label>
-                 <select id="target-lang-doc" name="target_lang">
-                     <option value="ar">Arabic (MSA Fusha)</option>
-                      <!- Add other target languages if reverse translation is implemented ->
-                     <!- <option value="en">English</option> ->
-                 </select>
-            </div>
-            <div class="input-group">
-                <label for="doc-input">Upload Document (.pdf, .docx, .xlsx, .pptx, .txt):</label>
-                <input type="file" id="doc-input" name="file" accept=".pdf,.docx,.xlsx,.pptx,.txt">
-            </div>
-            <div class="form-group">
-                <button type="submit" class="btn btn-primary">Translate Document</button>
-            </div>
-            <div id="doc-loading" class="loading-spinner" style="display: none;">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="sr-only">Loading...</span>
+                    <!-- Quick phrases section -->
+                    <div class="quick-phrases-container">
+                        <h3>Quick Phrases</h3>
+                        <div class="quick-phrases">
+                            <button type="button" class="phrase-btn" data-phrase="Hello, how are you?" data-auto-translate="true">Hello</button>
+                            <button type="button" class="phrase-btn" data-phrase="Thank you very much" data-auto-translate="true">Thank you</button>
+                            <button type="button" class="phrase-btn" data-phrase="Where is the nearest hospital?" data-auto-translate="true">Emergency</button>
+                            <button type="button" class="phrase-btn" data-phrase="I need help, please" data-auto-translate="true">Help</button>
+                            <button type="button" class="phrase-btn" data-phrase="How much does this cost?" data-auto-translate="true">Price</button>
+                            <button type="button" class="phrase-btn" data-phrase="I don't understand" data-auto-translate="true">Confused</button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Translation Phrases Section -->
+                    <div class="quick-phrases">
+                        <h3>Frequently Used Phrases</h3>
+                        <div class="phrase-buttons">
+                            <button type="button" class="phrase-btn" data-text="Hello, how are you?">Hello, how are you?</button>
+                            <button type="button" class="phrase-btn" data-text="Thank you very much">Thank you very much</button>
+                            <button type="button" class="phrase-btn" data-text="Excuse me, where is...?">Excuse me, where is...?</button>
+                            <button type="button" class="phrase-btn" data-text="I don't understand">I don't understand</button>
+                            <button type="button" class="phrase-btn" data-text="How much does it cost?">How much does it cost?</button>
+                        </div>
+                    </div>
                 </div>
-                <p>Translating document... This may take a few minutes for large files or first-time use.</p>
             </div>
-        </form>
-        <div id="doc-result" class="result-box" dir="rtl"> <!- Set default to RTL for Arabic output ->
-            <h3>Translation:</h3>
-            <p>Original Filename: <span id="doc-filename"></span></p>
-            <p>Detected Source Language: <span id="doc-source-lang"></span></p>
-            <pre><code id="doc-output"></code></pre>
+        </section>
+
+        <section id="document-translation" class="translation-section hidden">
+            <div class="translation-container">
+                <div class="translation-box">
+                    <form id="doc-translation-form" enctype="multipart/form-data">
+                        <div class="language-controls">
+                            <div class="language-selector">
+                                <select id="source-lang-doc" name="source_lang" class="lang-select">
+                                    <option value="auto">Detect Language</option>
+                                    <option value="en">English</option>
+                                    <option value="fr">French</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="de">German</option>
+                                    <option value="ar">Arabic</option>
+                                    <option value="zh">Chinese</option>
+                                    <option value="ru">Russian</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="hi">Hindi</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="tr">Turkish</option>
+                                    <option value="it">Italian</option>
+                                </select>
+                            </div>
+                            
+                            <div class="swap-languages">
+                                <button type="button" id="swap-languages-doc" aria-label="Swap languages">
+                                    <i class="fas fa-exchange-alt"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="language-selector">
+                                <select id="target-lang-doc" name="target_lang" class="lang-select">
+                                    <option value="ar">Arabic</option>
+                                    <option value="en">English</option>
+                                    <option value="fr">French</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="de">German</option>
+                                    <option value="zh">Chinese</option>
+                                    <option value="ru">Russian</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="hi">Hindi</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="tr">Turkish</option>
+                                    <option value="it">Italian</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="file-upload-area">
+                            <label for="doc-input" class="file-upload-label">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <span>Choose a file or drag it here</span>
+                                <span class="file-types">(.pdf, .docx, .txt)</span>
+                            </label>
+                            <input type="file" id="doc-input" name="file" accept=".pdf,.docx,.txt" class="file-input">
+                            <div id="file-name-display"></div>
+                        </div>
+                        
+                        <div class="document-actions">
+                            <button type="submit" class="translate-button">
+                                <i class="fas fa-language"></i> Translate Document
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div id="doc-loading" class="loading-indicator">
+                        <div class="spinner"></div>
+                        <span>Translating document...</span>
+                        <p>This may take a few moments depending on file size.</p>
+                    </div>
+                    
+                    <div class="document-result-area">
+                        <div id="doc-result" class="document-panels">
+                            <div class="panel source-panel">
+                                <div class="panel-header">
+                                    <span class="panel-title">Original Document</span>
+                                    <div class="file-info">
+                                        <span id="doc-filename"></span>
+                                        (<span id="doc-source-lang"></span>)
+                                    </div>
+                                </div>
+                                <div class="document-content">
+                                    <pre><code id="doc-input-text"></code></pre>
+                                </div>
+                            </div>
+                            
+                            <div class="panel target-panel">
+                                <div class="panel-header">
+                                    <span class="panel-title">Translated Document</span>
+                                    <div class="panel-actions">
+                                        <button type="button" id="copy-doc-translation" class="icon-button">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="document-content">
+                                    <pre><code id="doc-output"></code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+    
+    <div id="notification" class="notification"></div>
+    <div id="error-message" class="error-message"></div>
+    <div id="debug-info" class="debug-info"></div>
+    
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2025 Tarjama - Smart Translation Service</p>
         </div>
-    </div>
+    </footer>
 
     <script src="/static/script.js"></script>
 </body>
