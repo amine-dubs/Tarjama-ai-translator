@@ -44,36 +44,41 @@ window.onload = function() {
         if (errorElement) errorElement.style.display = 'none';
         if (debugElement) debugElement.style.display = 'none';
         
-        // --- ULTRA-DEFENSIVE CHECK ---
-        const currentTextInput = document.getElementById('text-input');
-        console.log('[DEBUG] Element fetched inside handler:', currentTextInput);
-        
-        if (!currentTextInput) {
-            console.error('FATAL: getElementById(\'text-input\') returned null INSIDE handler.');
-            showError('Internal error: Text input element not found.');
+        // --- FINAL DEFENSIVE CHECK using variable captured onload ---
+        console.log('[DEBUG] Checking textInput variable captured onload:', textInput);
+
+        if (!textInput) {
+            // This should ideally not happen if the check on load passed
+            console.error('FATAL: textInput variable (captured onload) is null INSIDE handler.');
+            showError('Internal error: Text input reference lost.');
             return;
         } else {
-            console.log('[DEBUG] Element IS NOT NULL. Type:', typeof currentTextInput);
+            console.log('[DEBUG] textInput variable IS NOT NULL. Type:', typeof textInput);
+            let inputValue = null;
+
             try {
-                console.log('[DEBUG] Element outerHTML:', currentTextInput.outerHTML);
+                console.log('[DEBUG] Attempting to access .value from textInput variable...');
+                inputValue = textInput.value; // Potential error point (Line 65 approx)
+                console.log('[DEBUG] Accessed .value successfully. Raw Value:', inputValue);
             } catch (e) {
-                console.error('[DEBUG] Error accessing outerHTML:', e);
-            }
-            
-            // Now try accessing the value
-            let text = '';
-            try {
-                console.log('[DEBUG] Attempting to access .value...');
-                text = currentTextInput.value ? currentTextInput.value.trim() : '';
-                console.log('[DEBUG] Accessed .value successfully. Value:', text);
-            } catch (e) {
-                console.error('FATAL: Error occurred accessing .value:', e);
-                console.error('[DEBUG] Element state just before error:', currentTextInput);
+                // This catch block should now definitively catch the error if it happens during value access
+                console.error('FATAL: Error occurred accessing .value from textInput variable:', e);
+                console.error('[DEBUG] textInput variable state just before error:', textInput);
+                 try {
+                     // Attempt to log outerHTML for more context if possible
+                     console.error('[DEBUG] Element outerHTML at time of error:', textInput.outerHTML);
+                 } catch (htmlError) {
+                     console.error('[DEBUG] Could not get outerHTML:', htmlError);
+                 }
                 showError('Internal error: Failed to read text input value. Check console.');
                 return; // Stop execution
             }
-            // --- END ULTRA-DEFENSIVE CHECK ---
-            
+
+            // Now use the stored value
+            const text = inputValue ? inputValue.trim() : '';
+            console.log('[DEBUG] Trimmed text value:', text);
+            // --- END FINAL DEFENSIVE CHECK ---
+
             if (!text) {
                 showError('Please enter text to translate');
                 return;
