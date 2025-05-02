@@ -182,34 +182,24 @@ def translate_text(text, source_lang, target_lang):
             return use_fallback_translation(text, source_lang, target_lang)
     
     try:
-        # Get full language name for better prompt context
+        # Get full language name for better cultural adaptation
         source_lang_name = LANGUAGE_MAP.get(source_lang, source_lang)
         
-        # Create a culturally-aware prompt with focus on Arabic eloquence (Balagha)
-        if target_lang == "ar":
-            prompt = f"""Translate the following {source_lang_name} text into Modern Standard Arabic (Fusha).
-Focus on conveying the meaning elegantly using proper Balagha (Arabic eloquence).
-Adapt any cultural references or idioms appropriately rather than translating literally.
-Ensure the translation reads naturally to a native Arabic speaker.
-
-Text to translate:
-{text}"""
-            print("Using culturally-aware prompt for Arabic translation with Balagha focus")
-        else:
-            # For non-Arabic target languages, use standard approach
-            prompt = text
+        # The Helsinki model doesn't need or work with the elaborate prompt
+        # Just send the text directly for translation
+        text_to_translate = text
         
         # Use a more reliable timeout approach with concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
                 lambda: translator(
-                    prompt,  # Using our enhanced prompt instead of raw text
-                    max_length=768  # Increased max_length to accommodate longer prompt
+                    text_to_translate,
+                    max_length=768
                 )[0]["translation_text"]
             )
             
             try:
-                # Set a reasonable timeout (10 seconds instead of 15)
+                # Set a reasonable timeout
                 result = future.result(timeout=10)
                 
                 # Post-process the result for Arabic cultural adaptation
