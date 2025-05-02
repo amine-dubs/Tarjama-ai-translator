@@ -182,14 +182,15 @@ def translate_text(text, source_lang, target_lang):
             return use_fallback_translation(text, source_lang, target_lang)
     
     try:
-        # Only send the raw text to the Helsinki model
-        text_to_translate = text
+        # Ensure only the raw text is sent to the Helsinki model
+        text_to_translate = text 
+        print(f"Translating text (first 50 chars): {text_to_translate[:50]}...") # Log the actual text being sent
         
         # Use a more reliable timeout approach with concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
                 lambda: translator(
-                    text_to_translate,
+                    text_to_translate, # Pass only the raw text
                     max_length=768
                 )[0]["translation_text"]
             )
@@ -198,17 +199,17 @@ def translate_text(text, source_lang, target_lang):
                 # Set a reasonable timeout
                 result = future.result(timeout=10)
                 
-                # Post-process the result for Arabic cultural adaptation
+                # Post-process the result for Arabic cultural adaptation if needed
                 if target_lang == "ar":
                     result = culturally_adapt_arabic(result)
                 
+                print(f"Translation successful (first 50 chars): {result[:50]}...")
                 return result
             except concurrent.futures.TimeoutError:
                 print(f"Model inference timed out after 10 seconds, falling back to online translation")
                 return use_fallback_translation(text, source_lang, target_lang)
             except Exception as e:
                 print(f"Error during model inference: {e}")
-                
                 # If the model failed during inference, try to re-initialize it for next time
                 # but use fallback for this request
                 initialize_model()
@@ -440,27 +441,34 @@ async def translate_document_endpoint(
     target_lang: str = Form("ar")
 ):
     """Translates text extracted from an uploaded document."""
+    print("[DEBUG] /translate/document endpoint called (Updated Code Check)") # Added log
     try:
         # Extract text directly from the uploaded file
+        print(f"[DEBUG] Processing file: {file.filename}, Source: {source_lang}, Target: {target_lang}")
         extracted_text = await extract_text_from_file(file)
         
         if not extracted_text:
+            print("[DEBUG] No text extracted from document.")
             raise HTTPException(status_code=400, detail="Could not extract any text from the document.")
 
-        # Translate the extracted text
+        # Translate the extracted text using the updated translate_text function
+        print("[DEBUG] Calling translate_text for document content...")
         translated_text = translate_text(extracted_text, source_lang, target_lang)
 
+        print(f"[DEBUG] Document translation successful. Returning result for {file.filename}")
         return JSONResponse(content={
             "original_filename": file.filename,
-            "detected_source_lang": source_lang,
+            "detected_source_lang": source_lang, # Assuming source_lang is detected or provided correctly
             "translated_text": translated_text
         })
 
     except HTTPException as http_exc:
+        # Re-raise HTTPExceptions directly
         raise http_exc
     except Exception as e:
         print(f"Document translation error: {e}")
         traceback.print_exc()
+        # Return a generic error response
         raise HTTPException(status_code=500, detail=f"Document translation error: {str(e)}")
 
 # --- Run the server (for local development) ---
