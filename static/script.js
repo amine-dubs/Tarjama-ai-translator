@@ -444,7 +444,6 @@ window.onload = function() {
             // Show the original text
             if (docInputText) {
                 docInputText.textContent = data.original_text;
-                
                 // Apply RTL styling based on source language
                 if (data.detected_source_lang && sourceLang === 'auto') {
                     applyRtlStyling(data.detected_source_lang, docInputText);
@@ -452,17 +451,21 @@ window.onload = function() {
                     applyRtlStyling(sourceLang, docInputText);
                 }
             }
-            
+
             // Show the translated text
             if (docOutput) {
                 docOutput.textContent = data.translated_text;
-                
                 // Apply RTL styling based on target language
                 applyRtlStyling(targetLang, docOutput);
             }
-            
+
             // Show the document result container
-            if (docResult) docResult.style.display = 'block';
+            if (docResult) {
+                docResult.classList.remove('hidden');
+            }
+            // Update filename and detected language
+            if (docFilename) docFilename.textContent = data.original_filename || '';
+            if (docSourceLang) docSourceLang.textContent = (data.detected_source_lang ? getLanguageName(data.detected_source_lang) : getLanguageName(sourceLang));
         })
         .catch(error => {
             console.error('Error during document translation:', error);
