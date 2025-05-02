@@ -1,13 +1,14 @@
 fastapi
-uvicorn
+uvicorn[standard]
+python-multipart
+requests
+transformers[torch]
+torch
+googletrans==4.0.0-rc1
 python-docx
 PyMuPDF
-requests
-python-multipart
+sacremoses # Added for MarianMT tokenization
 jinja2
-transformers
-torch
 sentencepiece
 tensorflow
-googletrans==4.0.0-rc1
 accelerate

@@ -20,10 +20,20 @@ window.onload = function() {
                 if (el) el.style.display = 'none';
             });
             
+            // Debugging: Log the form element itself
+            console.log('Form element context (this):', this);
+            
             // Always select elements from the form context
             const textInput = this.querySelector('#text-input');
+            // Debugging: Log the result of the querySelector
+            console.log('Result of this.querySelector(\'#text-input\'):', textInput);
+            
             const sourceLang = this.querySelector('#source-lang-text');
+            console.log('Result of this.querySelector(\'#source-lang-text\'):', sourceLang);
+            
             const targetLang = this.querySelector('#target-lang-text');
+            console.log('Result of this.querySelector(\'#target-lang-text\'):', targetLang);
+            
             const loadingElement = document.querySelector('#text-loading');
             const debugElement = document.querySelector('#debug-info');
             
@@ -45,7 +55,13 @@ window.onload = function() {
             
             // Check for missing elements
             if (!textInput || !sourceLang || !targetLang) {
-                showError('Form elements not found. Please check the HTML structure.');
+                // Debugging: Log which specific elements are missing
+                console.error('Missing elements:', { 
+                    textInput: textInput, 
+                    sourceLang: sourceLang, 
+                    targetLang: targetLang 
+                });
+                showError('Form elements not found. Please check the HTML structure and console logs.');
                 return;
             }
             
