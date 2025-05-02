@@ -713,16 +713,19 @@ async def download_translated_document(request: Request):
         
         # Handle different file types
         if filename.endswith('.txt'):
-            # Simple text file
+            # Simple text file with UTF-8 encoding
             from fastapi.responses import Response
             return Response(
                 content=content.encode('utf-8'),
-                media_type="text/plain",
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
+                media_type="text/plain; charset=utf-8",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Type": "text/plain; charset=utf-8"
+                }
             )
         
         elif filename.endswith('.pdf'):
-            # Create PDF file
+            # Create PDF file with proper font for Arabic
             try:
                 import fitz  # PyMuPDF
                 from io import BytesIO
@@ -731,53 +734,33 @@ async def download_translated_document(request: Request):
                 doc = fitz.open()
                 page = doc.new_page()
                 
-                # Insert text into the PDF
+                # Use a font that supports Arabic
+                # First try to find an installed Arabic font
+                fontname = None
+                arabic_fonts = ["Arial", "Arial Unicode MS", "Times New Roman", "Tahoma", "Calibri"]
+                for font in arabic_fonts:
+                    try:
+                        fontname = font
+                        break
+                    except:
+                        continue
+                
+                # Set font parameters explicitly for Arabic text
+                fontsize = 11
+                # Insert text into the PDF with specific parameters for right-to-left text
                 text_rect = fitz.Rect(50, 50, page.rect.width - 50, page.rect.height - 50)
                 
-                # Check if content contains Arabic text
-                has_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
-                
-                # Use insert_text which is more reliable for complex scripts
-                if has_arabic:
-                    # For Arabic text, specify font embedding and RTL direction
-                    try:
-                        # Create text spans with explicit font information
-                        font_size = 11
-                        line_height = font_size * 1.2
-                        current_y = 100
-                        
-                        # Split content into lines to handle them separately
-                        lines = content.split('\n')
-                        for line in lines:
-                            if line.strip():
-                                page.insert_text(
-                                    (50, current_y),
-                                    line,
-                                    fontsize=font_size,
-                                    fontname="helv",  # Use a base font that will be substituted
-                                    encoding=fitz.TEXT_ENCODING_UNICODE,  # Use Unicode encoding
-                                    color=(0, 0, 0),
-                                    render_mode=0
-                                )
-                            current_y += line_height
-                    except Exception as e:
-                        print(f"Error with Arabic text rendering: {e}")
-                        # Fallback method
-                        page.insert_text((50, 100), content, fontsize=11)
-                else:
-                    # For non-Arabic text, use standard method
-                    page.insert_text(
-                        (50, 100),
-                        content,
-                        fontsize=11
-                    )
+                # Create a text writer with RTL direction for Arabic
+                tw = fitz.TextWriter(page.rect)
+                tw.append(text_rect.tl, content, fontname=fontname, fontsize=fontsize)
+                tw.write_text(page)
                 
                 # Save to bytes
                 pdf_bytes = BytesIO()
                 doc.save(pdf_bytes)
                 doc.close()
                 
-                # Return as attachment
+                # Return as attachment with proper encoding
                 from fastapi.responses import Response
                 return Response(
                     content=pdf_bytes.getvalue(),
@@ -791,20 +774,26 @@ async def download_translated_document(request: Request):
                 )
                 
         elif filename.endswith('.docx'):
-            # Create DOCX file
+            # Create DOCX file with proper encoding for Arabic
             try:
                 import docx
                 from io import BytesIO
                 
                 # Create a new document with the translated content
                 doc = docx.Document()
-                doc.add_paragraph(content)
+                
+                # Add a paragraph with the translated content
+                p = doc.add_paragraph()
+                # Set paragraph direction to right-to-left for Arabic
+                p._element.get_or_add_pPr().set('bidi', True)  # Set RTL direction
+                p.add_run(content)
                 
                 # Save to bytes
                 docx_bytes = BytesIO()
                 doc.save(docx_bytes)
+                docx_bytes.seek(0)
                 
-                # Return as attachment
+                # Return as attachment with proper encoding
                 from fastapi.responses import Response
                 return Response(
                     content=docx_bytes.getvalue(),
@@ -816,14 +805,25 @@ async def download_translated_document(request: Request):
                     status_code=501,
                     content={"success": False, "error": "DOCX creation requires python-docx library"}
                 )
+            except Exception as e:
+                # Additional error info for DOCX creation
+                print(f"Error in DOCX creation: {str(e)}")
+                traceback.print_exc()
+                return JSONResponse(
+                    status_code=500, 
+                    content={"success": False, "error": f"DOCX creation error: {str(e)}"}
+                )
         
         else:
             # Fallback to text file
             from fastapi.responses import Response
             return Response(
                 content=content.encode('utf-8'),
-                media_type="text/plain",
-                headers={"Content-Disposition": f"attachment; filename={filename}.txt"}
+                media_type="text/plain; charset=utf-8",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}.txt",
+                    "Content-Type": "text/plain; charset=utf-8"
+                }
             )
             
     except Exception as e:
