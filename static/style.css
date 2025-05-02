@@ -326,14 +326,17 @@ textarea#text-input:focus {
 
 /* Translate button for documents - default transparent until file is selected */
 #doc-translation-form .translate-button {
-    background-color: rgba(66, 133, 244, 0.5);
-    opacity: 0.7;
+    opacity: 0.6;
+    background-color: rgba(66, 133, 244, 0.8);
     transition: all 0.3s ease;
+    cursor: not-allowed;
 }
 
 #doc-translation-form .translate-button.active-button {
     background-color: #4285f4;
     opacity: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 
 /* Document upload area */
@@ -344,6 +347,7 @@ textarea#text-input:focus {
     text-align: center;
     margin: 2rem 0;
     transition: border-color 0.3s, background-color 0.3s;
+    position: relative;
 }
 
 .file-upload-area:hover {
@@ -374,15 +378,17 @@ input.file-input {
     display: none;
 }
 
+/* File name display - improved styling */
 #file-name-display {
     margin-top: 1rem;
-    font-size: 0.9rem;
-    color: #4285f4;
-    font-weight: 500;
-    padding: 0.5rem;
+    padding: 0.7rem 1rem;
     background-color: #e8f0fe;
     border-radius: 4px;
+    color: #1a73e8;
+    font-weight: 500;
     display: none;
+    margin-bottom: 1rem;
+    border-left: 3px solid #4285f4;
 }
 
 .document-result-area {
@@ -404,7 +410,7 @@ input.file-input {
     color: #777;
 }
 
-/* Download button */
+/* Download button - enhanced styling */
 .download-button {
     background-color: #34A853;
     color: white;
@@ -413,15 +419,21 @@ input.file-input {
     padding: 0.8rem 1.5rem;
     font-size: 1rem;
     cursor: pointer;
-    transition: background-color 0.3s;
+    transition: all 0.3s ease;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     margin: 1.5rem auto;
+    width: fit-content;
+    min-width: 200px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
 }
 
 .download-button:hover {
-    background-color: #2d8e47;
+    background-color: #2a8a46;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+    transform: translateY(-1px);
 }
 
 .download-button i {

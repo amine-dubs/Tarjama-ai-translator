@@ -85,15 +85,22 @@ window.onload = function() {
     
     // Quick phrases implementation
     if (phraseButtons && phraseButtons.length > 0) {
+        console.log('Found phrase buttons:', phraseButtons.length);
         phraseButtons.forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
+                console.log('Phrase button clicked');
                 const phrase = this.getAttribute('data-text') || this.getAttribute('data-phrase');
                 
                 if (phrase && textInput) {
-                    // If not on the text tab, switch to it
+                    console.log('Using phrase:', phrase);
+                    // First ensure text section is visible
                     if (textSection.classList.contains('hidden')) {
-                        textTabLink.click();
+                        console.log('Switching to text tab');
+                        docSection.classList.add('hidden');
+                        textSection.classList.remove('hidden');
+                        textTabLink.parentElement.classList.add('active');
+                        docTabLink.parentElement.classList.remove('active');
                     }
                     
                     // Insert the phrase at cursor position, or append to end
@@ -565,13 +572,14 @@ window.onload = function() {
     
     // Function to download translated document
     function downloadTranslatedDocument(content, fileName, fileType) {
+        console.log('Downloading translated document:', fileName, fileType);
         // Determine the file extension
         let extension = '';
-        if (fileName.endsWith('.pdf')) {
+        if (fileName.toLowerCase().endsWith('.pdf')) {
             extension = '.pdf';
-        } else if (fileName.endsWith('.docx')) {
+        } else if (fileName.toLowerCase().endsWith('.docx')) {
             extension = '.docx';
-        } else if (fileName.endsWith('.txt')) {
+        } else if (fileName.toLowerCase().endsWith('.txt')) {
             extension = '.txt';
         } else {
             extension = '.txt'; // Default to txt
@@ -581,8 +589,10 @@ window.onload = function() {
         const baseName = fileName.substring(0, fileName.lastIndexOf('.'));
         const translatedFileName = `${baseName}_translated${extension}`;
         
-        // For simplicity, we'll handle text downloads here
-        // For PDF and DOCX, we would need server-side processing
+        // Show notification that download is starting
+        showNotification('Preparing document for download...');
+        
+        // For text files, we can download directly from the browser
         if (extension === '.txt') {
             const blob = new Blob([content], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
@@ -594,8 +604,10 @@ window.onload = function() {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            
+            showNotification('Document downloaded successfully!');
         } else {
-            // For non-text files, we need to request a download from the server
+            // For PDF and DOCX files, we need the server to create them
             fetch('/download/translated-document', {
                 method: 'POST',
                 headers: {
@@ -604,17 +616,31 @@ window.onload = function() {
                 body: JSON.stringify({
                     content: content,
                     filename: translatedFileName,
-                    original_type: fileType
+                    original_type: fileType || 'text/plain'
                 }),
             })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error('Failed to generate document for download');
+                    throw new Error(`Server error: ${response.status} ${response.statusText}`);
                 }
                 return response.blob();
             })
             .then(blob => {
-                const url = URL.createObjectURL(blob);
+                // Create appropriate MIME type based on extension
+                let mimeType;
+                if (extension === '.pdf') {
+                    mimeType = 'application/pdf';
+                } else if (extension === '.docx') {
+                    mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                } else {
+                    mimeType = 'text/plain';
+                }
+                
+                // Create a blob with the correct MIME type
+                const fileBlob = new Blob([blob], { type: mimeType });
+                const url = URL.createObjectURL(fileBlob);
+                
+                // Create and trigger download link
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = translatedFileName;
@@ -622,6 +648,8 @@ window.onload = function() {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+                
+                showNotification('Document downloaded successfully!');
             })
             .catch(error => {
                 console.error('Error downloading document:', error);
