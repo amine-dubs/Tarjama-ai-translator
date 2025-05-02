@@ -2,35 +2,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // Log when the page loads to confirm JavaScript is working
     console.log("Translation app initialized");
     
-    const textForm = document.getElementById('text-translation-form');
-    const docForm = document.getElementById('doc-translation-form');
-    const textResultBox = document.getElementById('text-result');
-    const textOutput = document.getElementById('text-output');
-    const docResultBox = document.getElementById('doc-result');
-    const docOutput = document.getElementById('doc-output');
-    const docFilename = document.getElementById('doc-filename');
-    const docSourceLang = document.getElementById('doc-source-lang');
-    const errorMessageDiv = document.getElementById('error-message');
-    const docLoadingIndicator = document.getElementById('doc-loading');
-    const debugInfoDiv = document.getElementById('debug-info');
+    // Safely get DOM elements with error handling
+    function safeGetElement(id) {
+        const element = document.getElementById(id);
+        if (!element) {
+            console.error(`Element not found: #${id}`);
+        }
+        return element;
+    }
     
-    // Check if all elements are found
-    if (!textForm) console.error("ERROR: Text translation form not found!");
-    if (!textResultBox) console.error("ERROR: Text result box not found!");
-    if (!textOutput) console.error("ERROR: Text output element not found!");
-    if (!errorMessageDiv) console.error("ERROR: Error message div not found!");
+    const textForm = safeGetElement('text-translation-form');
+    const docForm = safeGetElement('doc-translation-form');
+    const textResultBox = safeGetElement('text-result');
+    const textOutput = safeGetElement('text-output');
+    const docResultBox = safeGetElement('doc-result');
+    const docOutput = safeGetElement('doc-output');
+    const docFilename = safeGetElement('doc-filename');
+    const docSourceLang = safeGetElement('doc-source-lang');
+    const errorMessageDiv = safeGetElement('error-message');
+    const docLoadingIndicator = safeGetElement('doc-loading');
+    const debugInfoDiv = safeGetElement('debug-info');
     
     // Create text loading indicator if it doesn't exist
-    let textLoadingDiv = document.getElementById('text-loading');
-    if (!textLoadingDiv) {
+    let textLoadingDiv = safeGetElement('text-loading');
+    if (!textLoadingDiv && textForm) {
         console.log("Creating missing text loading indicator");
         textLoadingDiv = document.createElement('div');
         textLoadingDiv.id = 'text-loading';
         textLoadingDiv.className = 'loading-spinner';
         textLoadingDiv.textContent = 'Translating...';
-        if (textForm) {
-            textForm.appendChild(textLoadingDiv);
-        }
+        textForm.appendChild(textLoadingDiv);
     }
     
     // Helper function to display debug info
@@ -123,25 +124,24 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show debug immediately to confirm the handler is working
             showDebug('Translation submission triggered');
             
-            // Use correct field IDs matching the HTML
-            const textInput = document.getElementById('text-input');
-            const sourceLangSelect = document.getElementById('source-lang-text');
-            const targetLangSelect = document.getElementById('target-lang-text');
+            // Use correct field IDs matching the HTML and check if they exist
+            const textInput = safeGetElement('text-input');
+            const sourceLangSelect = safeGetElement('source-lang-text');
+            const targetLangSelect = safeGetElement('target-lang-text');
             
-            if (!textInput) {
-                displayError('Text input element not found!');
-                return;
-            }
-            if (!sourceLangSelect) {
-                displayError('Source language select not found!');
-                return;
-            }
-            if (!targetLangSelect) {
-                displayError('Target language select not found!');
+            // Check all required elements exist before proceeding
+            if (!textInput || !sourceLangSelect || !targetLangSelect) {
+                displayError('One or more required form elements are missing. Check your HTML structure.');
+                console.error('Missing elements:', 
+                    !textInput ? 'text-input' : '', 
+                    !sourceLangSelect ? 'source-lang-text' : '',
+                    !targetLangSelect ? 'target-lang-text' : ''
+                );
                 return;
             }
             
-            const sourceText = textInput.value.trim();
+            // Safely extract values
+            const sourceText = textInput.value ? textInput.value.trim() : '';
             const sourceLang = sourceLangSelect.value;
             const targetLang = targetLangSelect.value;
             
@@ -240,10 +240,10 @@ document.addEventListener('DOMContentLoaded', () => {
             clearFeedback();
 
             const formData = new FormData(docForm);
-            const fileInput = document.getElementById('doc-input');
+            const fileInput = safeGetElement('doc-input');
             const button = docForm.querySelector('button');
 
-            if (!fileInput.files || fileInput.files.length === 0) {
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
                 displayError('Please select a document to upload.');
                 return;
             }
