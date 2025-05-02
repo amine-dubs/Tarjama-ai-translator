@@ -87,8 +87,8 @@ def initialize_model():
     try:
         print(f"Initializing model and tokenizer (attempt {model_initialization_attempts})...")
         
-        # Use a better translation model that handles multilingual tasks well
-        model_name = "facebook/nllb-200-distilled-600M"  # Better multilingual translation model
+        # Use a smaller, faster model
+        model_name = "Helsinki-NLP/opus-mt-en-ar"  # Much smaller English-to-Arabic model
         
         # Check for available device - properly detect CPU/GPU
         device = "cpu"  # Default to CPU which is more reliable
@@ -99,15 +99,20 @@ def initialize_model():
         
         # Load the tokenizer with explicit cache directory
         print(f"Loading tokenizer from {model_name}...")
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_name, 
-            cache_dir="/tmp/transformers_cache",
-            use_fast=True  # Use faster tokenizer when possible
-        )
-        if tokenizer is None:
-            print("Failed to load tokenizer")
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name, 
+                cache_dir="/tmp/transformers_cache",
+                use_fast=True,
+                local_files_only=False
+            )
+            if tokenizer is None:
+                print("Failed to load tokenizer")
+                return False
+            print("Tokenizer loaded successfully")
+        except Exception as e:
+            print(f"Error loading tokenizer: {e}")
             return False
-        print("Tokenizer loaded successfully")
         
         # Load the model with explicit device placement
         print(f"Loading model from {model_name}...")
@@ -143,8 +148,7 @@ def initialize_model():
                 return False
                 
             # Test the model with a simple translation to verify it works
-            # NLLB needs language codes in format like "eng_Latn" and "ara_Arab"
-            test_result = translator("hello", src_lang="eng_Latn", tgt_lang="ara_Arab", max_length=128)
+            test_result = translator("hello world", max_length=128)
             print(f"Model test result: {test_result}")
             if not test_result or not isinstance(test_result, list) or len(test_result) == 0:
                 print("Model test failed: Invalid output format")
@@ -194,25 +198,19 @@ Text to translate:
         else:
             # For non-Arabic target languages, use standard approach
             prompt = text
-            
-        # Prepare input with explicit instruction format for better results with NLLB
-        src_lang_code = f"{source_lang}_Latn" if source_lang != "ar" else f"{source_lang}_Arab"
-        tgt_lang_code = f"{target_lang}_Latn" if target_lang != "ar" else f"{target_lang}_Arab"
         
         # Use a more reliable timeout approach with concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
                 lambda: translator(
                     prompt,  # Using our enhanced prompt instead of raw text
-                    src_lang=src_lang_code,
-                    tgt_lang=tgt_lang_code,
                     max_length=768  # Increased max_length to accommodate longer prompt
                 )[0]["translation_text"]
             )
             
             try:
-                # Set a reasonable timeout (15 seconds instead of 10)
-                result = future.result(timeout=15)
+                # Set a reasonable timeout (10 seconds instead of 15)
+                result = future.result(timeout=10)
                 
                 # Post-process the result for Arabic cultural adaptation
                 if target_lang == "ar":
@@ -220,7 +218,7 @@ Text to translate:
                 
                 return result
             except concurrent.futures.TimeoutError:
-                print(f"Model inference timed out after 15 seconds, falling back to online translation")
+                print(f"Model inference timed out after 10 seconds, falling back to online translation")
                 return use_fallback_translation(text, source_lang, target_lang)
             except Exception as e:
                 print(f"Error during model inference: {e}")
@@ -265,7 +263,7 @@ def check_and_reinitialize_model():
             
         # Test the existing model with a simple translation
         test_text = "hello"
-        result = translator(test_text, src_lang="eng_Latn", tgt_lang="fra_Latn", max_length=128)
+        result = translator(test_text, max_length=128)
         
         # If we got a valid result, model is working fine
         if result and isinstance(result, list) and len(result) > 0:
@@ -281,15 +279,30 @@ def check_and_reinitialize_model():
 
 def use_fallback_translation(text, source_lang, target_lang):
     """Use various fallback online translation services."""
-    # List of LibreTranslate servers to try in order
+    print("Using fallback translation...")
+    
+    # Try Google Translate API with a wrapper first (most reliable)
+    try:
+        print("Attempting fallback with Google Translate (no API key)")
+        from googletrans import Translator
+        google_translator = Translator(service_urls=['translate.google.com', 'translate.google.co.kr'])
+        result = google_translator.translate(text, src=source_lang, dest=target_lang)
+        if result and result.text:
+            print("Google Translate successful!")
+            return result.text
+    except Exception as e:
+        print(f"Error with Google Translate fallback: {str(e)}")
+    
+    # List of LibreTranslate servers to try with increased timeout
     libre_servers = [
         "https://translate.terraprint.co/translate",
         "https://libretranslate.de/translate",
         "https://translate.argosopentech.com/translate",
-        "https://translate.fedilab.app/translate"  # Added additional server
+        "https://translate.fedilab.app/translate",
+        "https://trans.zillyhuhn.com/translate"  # Additional server
     ]
     
-    # Try each LibreTranslate server
+    # Try each LibreTranslate server with increased timeout
     for server in libre_servers:
         try:
             print(f"Attempting fallback translation using LibreTranslate: {server}")
@@ -302,30 +315,38 @@ def use_fallback_translation(text, source_lang, target_lang):
                 "target": target_lang
             }
             
-            # Use a shorter timeout for the request (5 seconds instead of 10)
-            response = requests.post(server, json=payload, headers=headers, timeout=5)
+            # Use a longer timeout for the request (8 seconds instead of 5)
+            response = requests.post(server, json=payload, headers=headers, timeout=8)
             
             if response.status_code == 200:
                 result = response.json()
                 if "translatedText" in result:
+                    print(f"LibreTranslate successful using {server}")
                     return result["translatedText"]
         except Exception as e:
             print(f"Error with LibreTranslate {server}: {str(e)}")
             continue
     
-    # If all LibreTranslate servers fail, try Google Translate API with a wrapper
-    # that doesn't need an API key for limited usage
+    # Try MyMemory as another fallback
     try:
-        print("Attempting fallback with Google Translate (no API key)")
-        from googletrans import Translator
-        google_translator = Translator()
-        result = google_translator.translate(text, src=source_lang, dest=target_lang)
-        return result.text
+        print("Attempting fallback with MyMemory Translation API")
+        url = "https://api.mymemory.translated.net/get"
+        params = {
+            "q": text,
+            "langpair": f"{source_lang}|{target_lang}",
+        }
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data and data.get("responseData") and data["responseData"].get("translatedText"):
+                print("MyMemory translation successful!")
+                return data["responseData"]["translatedText"]
     except Exception as e:
-        print(f"Error with Google Translate fallback: {str(e)}")
+        print(f"Error with MyMemory fallback: {str(e)}")
     
     # Final fallback - return original text with error message
-    return f"[Translation failed] {text}"
+    print("All translation services failed. Returning error message.")
+    return f"[Translation services unavailable] {text}"
 
 # --- Helper Functions ---
 async def extract_text_from_file(file: UploadFile) -> str:
