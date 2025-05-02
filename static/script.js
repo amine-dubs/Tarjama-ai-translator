@@ -462,6 +462,7 @@ window.onload = function() {
             // Show the document result container
             if (docResult) {
                 docResult.classList.remove('hidden');
+                docResult.style.display = 'flex'; // Ensure the result is visible
             }
             // Update filename and detected language
             if (docFilename) docFilename.textContent = data.original_filename || '';

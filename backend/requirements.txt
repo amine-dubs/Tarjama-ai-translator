@@ -12,3 +12,4 @@ jinja2
 sentencepiece
 tensorflow
 accelerate
+langdetect
