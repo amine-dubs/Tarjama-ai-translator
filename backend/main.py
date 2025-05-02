@@ -698,6 +698,9 @@ async def translate_document_endpoint(
 @app.post("/download/translated-document")
 async def download_translated_document(request: Request):
     """Creates and returns a downloadable version of the translated document."""
+    # Import Response at the function start to ensure it's in scope for all code paths
+    from fastapi.responses import Response
+    
     try:
         # Parse request body
         data = await request.json()
@@ -714,7 +717,6 @@ async def download_translated_document(request: Request):
         # Handle different file types
         if filename.endswith('.txt'):
             # Simple text file with UTF-8 encoding
-            from fastapi.responses import Response
             return Response(
                 content=content.encode('utf-8'),
                 media_type="text/plain; charset=utf-8",
@@ -731,115 +733,52 @@ async def download_translated_document(request: Request):
                 import tempfile
                 import os
                 
+                # Create a new PDF document
+                doc = fitz.open()
+                page = doc.new_page()
+                
                 # Check if text contains Arabic
                 has_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
                 
-                # For Arabic PDFs, we'll try a special approach:
-                # 1. Create a temporary HTML file with the Arabic text
-                # 2. Use PyMuPDF to convert the HTML to PDF
-                
-                # Create a temporary HTML file with proper RTL styling
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w', encoding='utf-8') as temp_html:
-                    html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        @page {{ size: A4; margin: 2cm; }}
-        body {{ 
-            font-family: Arial, 'Times New Roman', sans-serif;
-            font-size: 12pt;
-            {'direction: rtl; text-align: right;' if has_arabic else 'direction: ltr; text-align: left;'}
-        }}
-    </style>
-</head>
-<body>
-    <div>
-        {content.replace('\n', '<br>')}
-    </div>
-</body>
-</html>"""
-                    temp_html.write(html_content)
-                    html_path = temp_html.name
-                
+                # Simple PDF creation approach - works with most PyMuPDF versions
                 try:
-                    # Create a new PDF document from the HTML
-                    doc = fitz.open()
-                    pdf_bytes = BytesIO()
-                    
-                    try:
-                        # Try converting HTML to PDF using PyMuPDF
-                        html_doc = fitz.open("html", html_content)
-                        doc.insert_pdf(html_doc)
-                    except Exception as html_err:
-                        print(f"HTML conversion failed: {html_err}")
-                        
-                        # Fallback: Create a simple PDF with basic text
-                        page = doc.new_page()
-                        
-                        # For right-to-left text like Arabic
-                        if has_arabic:
-                            # Add text as blocks from right to left
-                            blocks = content.split("\n")
-                            y_pos = 50
-                            for block in blocks:
-                                if block.strip():
-                                    rect = fitz.Rect(50, y_pos, page.rect.width - 50, y_pos + 20)
-                                    page.insert_text(rect.tl, block, fontsize=11, 
-                                                    fontname="helv", right_to_left=True)
-                                    y_pos += 20
-                        else:
-                            # For left-to-right text
-                            page.insert_text((50, 50), content, fontsize=11)
-                    
-                    # Save the PDF
-                    doc.save(pdf_bytes)
-                    doc.close()
-                    
-                    # Clean up the temporary HTML file
-                    try:
-                        os.unlink(html_path)
-                    except:
-                        pass
-                    
-                    # Return as attachment
-                    from fastapi.responses import Response
-                    return Response(
-                        content=pdf_bytes.getvalue(),
-                        media_type="application/pdf",
-                        headers={"Content-Disposition": f"attachment; filename={filename}"}
-                    )
-                except Exception as pdf_err:
-                    print(f"PDF generation error: {pdf_err}")
-                    traceback.print_exc()
-                    
-                    # If PDF generation failed, try an even simpler approach
-                    # Just create a plain text PDF
-                    try:
-                        doc = fitz.open()
-                        page = doc.new_page()
-                        font = "helv"  # Built-in font with reasonable Unicode support
-                        page.insert_text((50, 50), content, fontname=font, fontsize=11)
-                        
-                        pdf_bytes = BytesIO()
-                        doc.save(pdf_bytes)
-                        doc.close()
-                        
-                        return Response(
-                            content=pdf_bytes.getvalue(),
-                            media_type="application/pdf",
-                            headers={"Content-Disposition": f"attachment; filename={filename}"}
-                        )
-                    except:
-                        # If all PDF approaches fail, fall back to plain text
-                        return Response(
-                            content=content.encode('utf-8'),
-                            media_type="text/plain; charset=utf-8",
-                            headers={
-                                "Content-Disposition": f"attachment; filename={filename.replace('.pdf', '.txt')}",
-                                "Content-Type": "text/plain; charset=utf-8"
-                            }
-                        )
+                    # For right-to-left text like Arabic
+                    if has_arabic:
+                        # Add text as blocks with appropriate alignment
+                        blocks = content.split("\n")
+                        y_pos = 50
+                        for block in blocks:
+                            if block.strip():
+                                # Create text with proper alignment for Arabic
+                                # Note: removed the right_to_left parameter as it's not supported
+                                rect = fitz.Rect(50, y_pos, page.rect.width - 50, y_pos + 20)
+                                # For Arabic, align text to the right side of the rectangle
+                                if has_arabic:
+                                    page.insert_text(rect.tr, block, fontsize=11, fontname="helv")
+                                else:
+                                    page.insert_text(rect.tl, block, fontsize=11, fontname="helv")
+                                y_pos += 20
+                    else:
+                        # For left-to-right text
+                        page.insert_text((50, 50), content, fontsize=11, fontname="helv")
+                
+                except Exception as e:
+                    print(f"Error inserting text: {e}")
+                    # Most basic approach if all else fails
+                    page.insert_text((50, 50), content, fontsize=11)
+                
+                # Save the PDF
+                pdf_bytes = BytesIO()
+                doc.save(pdf_bytes)
+                doc.close()
+                
+                # Return as attachment
+                return Response(
+                    content=pdf_bytes.getvalue(),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+                
             except ImportError:
                 return JSONResponse(
                     status_code=501,
@@ -848,9 +787,14 @@ async def download_translated_document(request: Request):
             except Exception as e:
                 print(f"PDF creation error: {str(e)}")
                 traceback.print_exc()
-                return JSONResponse(
-                    status_code=500,
-                    content={"success": False, "error": f"PDF creation failed: {str(e)}"}
+                # Return a text file instead
+                return Response(
+                    content=content.encode('utf-8'),
+                    media_type="text/plain; charset=utf-8",
+                    headers={
+                        "Content-Disposition": f"attachment; filename={filename.replace('.pdf', '.txt')}",
+                        "Content-Type": "text/plain; charset=utf-8"
+                    }
                 )
                 
         elif filename.endswith('.docx'):
@@ -879,7 +823,6 @@ async def download_translated_document(request: Request):
                 docx_bytes.seek(0)
                 
                 # Return as attachment with proper encoding
-                from fastapi.responses import Response
                 return Response(
                     content=docx_bytes.getvalue(),
                     media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -900,7 +843,6 @@ async def download_translated_document(request: Request):
         
         else:
             # Fallback to text file
-            from fastapi.responses import Response
             return Response(
                 content=content.encode('utf-8'),
                 media_type="text/plain; charset=utf-8",
