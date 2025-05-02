@@ -182,11 +182,7 @@ def translate_text(text, source_lang, target_lang):
             return use_fallback_translation(text, source_lang, target_lang)
     
     try:
-        # Get full language name for better cultural adaptation
-        source_lang_name = LANGUAGE_MAP.get(source_lang, source_lang)
-        
-        # The Helsinki model doesn't need or work with the elaborate prompt
-        # Just send the text directly for translation
+        # Only send the raw text to the Helsinki model
         text_to_translate = text
         
         # Use a more reliable timeout approach with concurrent.futures

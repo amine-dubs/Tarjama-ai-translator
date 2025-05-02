@@ -20,10 +20,10 @@ window.onload = function() {
                 if (el) el.style.display = 'none';
             });
             
-            // Get form elements directly from the form itself
-            const textInput = textTranslationForm.querySelector('#text-input');
-            const sourceLang = textTranslationForm.querySelector('#source-lang-text');
-            const targetLang = textTranslationForm.querySelector('#target-lang-text');
+            // Always select elements from the form context
+            const textInput = this.querySelector('#text-input');
+            const sourceLang = this.querySelector('#source-lang-text');
+            const targetLang = this.querySelector('#target-lang-text');
             const loadingElement = document.querySelector('#text-loading');
             const debugElement = document.querySelector('#debug-info');
             
