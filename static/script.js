@@ -2,63 +2,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Log when the page loads to confirm JavaScript is working
     console.log("Translation app initialized");
     
-    // Safely get DOM elements with error handling
-    function safeGetElement(id) {
-        const element = document.getElementById(id);
-        if (!element) {
-            console.error(`Element not found: #${id}`);
-        }
-        return element;
-    }
+    // Get references to main form elements
+    const textForm = document.getElementById('text-translation-form');
+    const docForm = document.getElementById('doc-translation-form');
+    const textResultBox = document.getElementById('text-result');
+    const textOutput = document.getElementById('text-output');
+    const docResultBox = document.getElementById('doc-result');
+    const docOutput = document.getElementById('doc-output');
+    const docFilename = document.getElementById('doc-filename');
+    const docSourceLang = document.getElementById('doc-source-lang');
+    const errorMessageDiv = document.getElementById('error-message');
+    const docLoadingIndicator = document.getElementById('doc-loading');
+    const debugInfoDiv = document.getElementById('debug-info');
+    const textLoadingDiv = document.getElementById('text-loading');
     
-    const textForm = safeGetElement('text-translation-form');
-    const docForm = safeGetElement('doc-translation-form');
-    const textResultBox = safeGetElement('text-result');
-    const textOutput = safeGetElement('text-output');
-    const docResultBox = safeGetElement('doc-result');
-    const docOutput = safeGetElement('doc-output');
-    const docFilename = safeGetElement('doc-filename');
-    const docSourceLang = safeGetElement('doc-source-lang');
-    const errorMessageDiv = safeGetElement('error-message');
-    const docLoadingIndicator = safeGetElement('doc-loading');
-    const debugInfoDiv = safeGetElement('debug-info');
-    
-    // Create text loading indicator if it doesn't exist
-    let textLoadingDiv = safeGetElement('text-loading');
-    if (!textLoadingDiv && textForm) {
-        console.log("Creating missing text loading indicator");
-        textLoadingDiv = document.createElement('div');
-        textLoadingDiv.id = 'text-loading';
-        textLoadingDiv.className = 'loading-spinner';
-        textLoadingDiv.textContent = 'Translating...';
-        textForm.appendChild(textLoadingDiv);
-    }
-    
-    // Helper function to display debug info
+    // Helper function for debugging
     function showDebug(message, data = null) {
         let debugText = typeof message === 'string' ? message : JSON.stringify(message);
-        
         if (data) {
             debugText += '\n' + JSON.stringify(data, null, 2);
         }
-        
         console.log("DEBUG:", message, data || '');
         if (debugInfoDiv) {
             debugInfoDiv.textContent = debugText;
             debugInfoDiv.style.display = 'block';
-        } else {
-            console.error("Debug div not found!");
         }
     }
     
     // Helper function to display errors
     function displayError(message) {
         let errorText = 'Error: ';
-        
         if (message === undefined || message === null) {
             errorText += 'Unknown error occurred';
         } else if (typeof message === 'object') {
-            // Improved error object handling
             if (message.message) {
                 errorText += message.message;
             } else if (message.detail) {
@@ -80,12 +56,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (errorMessageDiv) {
             errorMessageDiv.textContent = errorText;
             errorMessageDiv.style.display = 'block';
-            
-            // Hide result boxes on error
             if (textResultBox) textResultBox.style.display = 'none';
             if (docResultBox) docResultBox.style.display = 'none';
         } else {
-            // If error div not found, use alert as fallback
             alert("Error: " + errorText);
         }
     }
@@ -113,48 +86,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Fix the text form submission handler
+    // Text translation form handler
     if (textForm) {
-        console.log("Adding submit event listener to text form");
-        textForm.addEventListener('submit', async (e) => {
-            console.log("Form submitted!");
+        textForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             clearFeedback();
-            
-            // Show debug immediately to confirm the handler is working
-            showDebug('Translation submission triggered');
-            
-            // Use correct field IDs matching the HTML and check if they exist
-            const textInput = safeGetElement('text-input');
-            const sourceLangSelect = safeGetElement('source-lang-text');
-            const targetLangSelect = safeGetElement('target-lang-text');
-            
-            // Check all required elements exist before proceeding
-            if (!textInput || !sourceLangSelect || !targetLangSelect) {
-                displayError('One or more required form elements are missing. Check your HTML structure.');
-                console.error('Missing elements:', 
-                    !textInput ? 'text-input' : '', 
-                    !sourceLangSelect ? 'source-lang-text' : '',
-                    !targetLangSelect ? 'target-lang-text' : ''
-                );
-                return;
-            }
-            
-            // Safely extract values
-            const sourceText = textInput.value ? textInput.value.trim() : '';
-            const sourceLang = sourceLangSelect.value;
-            const targetLang = targetLangSelect.value;
-            
-            if (!sourceText) {
-                displayError('Please enter text to translate');
-                return;
-            }
+            showDebug('Translation form submitted');
             
             try {
-                // Show loading state 
-                if (textLoadingDiv) textLoadingDiv.style.display = 'block';
+                // IMPORTANT: Get the input elements directly by their IDs inside this function
+                // This ensures the elements are found at the time the form is submitted
+                const textInput = document.getElementById('text-input');
+                const sourceLangSelect = document.getElementById('source-lang-text');
+                const targetLangSelect = document.getElementById('target-lang-text');
                 
-                // Log payload for debugging
+                if (!textInput) {
+                    throw new Error('Text input element not found');
+                }
+                if (!sourceLangSelect) {
+                    throw new Error('Source language select not found');
+                }
+                if (!targetLangSelect) {
+                    throw new Error('Target language select not found');
+                }
+                
+                const sourceText = textInput.value ? textInput.value.trim() : '';
+                if (!sourceText) {
+                    displayError('Please enter text to translate');
+                    return;
+                }
+                
+                const sourceLang = sourceLangSelect.value;
+                const targetLang = targetLangSelect.value;
+                
+                showDebug('Form values:', {
+                    text: sourceText,
+                    sourceLang: sourceLang,
+                    targetLang: targetLang
+                });
+                
+                // Show loading indication
+                if (textLoadingDiv) {
+                    textLoadingDiv.style.display = 'block';
+                }
+                
+                // Prepare payload
                 const payload = { 
                     text: sourceText, 
                     source_lang: sourceLang, 
@@ -162,85 +138,71 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 showDebug('Sending translation request', payload);
                 
-                // Check if API is available
-                try {
-                    const response = await fetch('/translate/text', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    // Log response status
-                    showDebug(`Response status: ${response.status}`);
-                    
-                    // Get the raw response text first for debugging
-                    const responseText = await response.text();
-                    showDebug('Raw response:', responseText);
-                    
-                    // Then parse it as JSON
-                    let data;
-                    try {
-                        data = JSON.parse(responseText);
-                    } catch (jsonError) {
-                        showDebug('JSON parse error:', jsonError);
-                        throw new Error(`Invalid JSON response: ${responseText}`);
-                    }
-                    
-                    // Hide loading state
-                    if (textLoadingDiv) textLoadingDiv.style.display = 'none';
-                    
-                    if (!response.ok) {
-                        if (data && data.error) {
-                            displayError(data.error);
-                        } else {
-                            displayError(`Server error: ${response.status}`);
-                        }
-                        return;
-                    }
-                    
-                    if (!data.success && data.error) {
-                        displayError(data.error);
-                        return;
-                    }
-                    
-                    if (!data.translated_text) {
-                        displayError('Translation returned empty text');
-                        return;
-                    }
-                    
-                    if (textOutput) {
-                        textOutput.textContent = data.translated_text;
-                        if (textResultBox) textResultBox.style.display = 'block';
-                    } else {
-                        displayError('Text output element not found!');
-                    }
-                    
-                } catch (fetchError) {
-                    console.error('Fetch error:', fetchError);
-                    displayError(`Network error: ${fetchError.message}. Make sure the backend server is running.`);
-                }
-            } catch (error) {
-                console.error('General error:', error);
-                displayError(`Error: ${error.message}`);
+                // Send API request
+                const response = await fetch('/translate/text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
                 
-                // Hide loading
-                if (textLoadingDiv) textLoadingDiv.style.display = 'none';
+                // Get and process response
+                const responseText = await response.text();
+                showDebug('Raw response:', responseText);
+                let data;
+                
+                try {
+                    data = JSON.parse(responseText);
+                } catch (error) {
+                    throw new Error(`Invalid JSON response: ${responseText}`);
+                }
+                
+                if (!response.ok) {
+                    if (data && data.error) {
+                        throw new Error(data.error);
+                    } else {
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+                }
+                
+                if (!data.success && data.error) {
+                    throw new Error(data.error);
+                }
+                
+                if (!data.translated_text) {
+                    throw new Error('Translation returned empty text');
+                }
+                
+                // Display result
+                if (textOutput && textResultBox) {
+                    textOutput.textContent = data.translated_text;
+                    textResultBox.style.display = 'block';
+                } else {
+                    throw new Error('Result display elements not found');
+                }
+                
+            } catch (error) {
+                console.error('Translation error:', error);
+                displayError(error.message || 'An unexpected error occurred');
+            } finally {
+                if (textLoadingDiv) {
+                    textLoadingDiv.style.display = 'none';
+                }
             }
         });
     } else {
-        console.error("Text translation form not found in the document!");
+        console.error("Text translation form not found!");
     }
 
-    // Handle Document Translation Form Submission
+    // Document translation form handler - similar approach
     if (docForm) {
         docForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             clearFeedback();
 
             const formData = new FormData(docForm);
-            const fileInput = safeGetElement('doc-input');
+            const fileInput = document.getElementById('doc-input');
             const button = docForm.querySelector('button');
 
             if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
@@ -302,6 +264,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     } else {
-        console.error("Document translation form not found in the document!");
+        console.error("Document translation form not found!");
     }
 });
