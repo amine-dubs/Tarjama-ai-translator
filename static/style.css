@@ -318,6 +318,24 @@ textarea#text-input:focus {
     cursor: not-allowed;
 }
 
+/* Active translate button */
+.translate-button.active-button {
+    background-color: #4285f4;
+    opacity: 1;
+}
+
+/* Translate button for documents - default transparent until file is selected */
+#doc-translation-form .translate-button {
+    background-color: rgba(66, 133, 244, 0.5);
+    opacity: 0.7;
+    transition: all 0.3s ease;
+}
+
+#doc-translation-form .translate-button.active-button {
+    background-color: #4285f4;
+    opacity: 1;
+}
+
 /* Document upload area */
 .file-upload-area {
     border: 2px dashed #ddd;
@@ -361,6 +379,10 @@ input.file-input {
     font-size: 0.9rem;
     color: #4285f4;
     font-weight: 500;
+    padding: 0.5rem;
+    background-color: #e8f0fe;
+    border-radius: 4px;
+    display: none;
 }
 
 .document-result-area {
@@ -380,6 +402,30 @@ input.file-input {
 .file-info {
     font-size: 0.85rem;
     color: #777;
+}
+
+/* Download button */
+.download-button {
+    background-color: #34A853;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 0.8rem 1.5rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1.5rem auto;
+}
+
+.download-button:hover {
+    background-color: #2d8e47;
+}
+
+.download-button i {
+    font-size: 1.1rem;
 }
 
 /* Loading indicator */
@@ -434,6 +480,20 @@ input.file-input {
 .error-message {
     background-color: #f44336;
     color: white;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    text-align: center;
+    display: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+/* Show animation for notification */
+.notification.show, 
+.error-message.show {
+    display: block;
+    opacity: 1;
+    animation: fadeIn 0.3s;
 }
 
 /* Footer */
@@ -518,6 +578,11 @@ footer {
     font-size: 0.8rem;
     margin-left: 0.5rem;
     font-weight: normal;
+}
+
+/* RTL support for text areas and panels */
+[dir="rtl"] {
+    text-align: right;
 }
 
 /* Responsive design */

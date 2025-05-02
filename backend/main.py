@@ -695,6 +695,108 @@ async def translate_document_endpoint(
             content={"success": False, "error": f"Document translation failed: {str(e)}"}
         )
 
+@app.post("/download/translated-document")
+async def download_translated_document(request: Request):
+    """Creates and returns a downloadable version of the translated document."""
+    try:
+        # Parse request body
+        data = await request.json()
+        content = data.get("content")
+        filename = data.get("filename")
+        original_type = data.get("original_type")
+        
+        if not content or not filename:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing required parameters"}
+            )
+        
+        # Handle different file types
+        if filename.endswith('.txt'):
+            # Simple text file
+            from fastapi.responses import Response
+            return Response(
+                content=content.encode('utf-8'),
+                media_type="text/plain",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+        
+        elif filename.endswith('.pdf'):
+            # Create PDF file
+            try:
+                import fitz  # PyMuPDF
+                from io import BytesIO
+                
+                # Create a new PDF document
+                doc = fitz.open()
+                page = doc.new_page()
+                
+                # Insert text into the PDF
+                text_rect = fitz.Rect(50, 50, page.rect.width - 50, page.rect.height - 50)
+                page.insert_text(text_rect.tl, content, fontsize=11)
+                
+                # Save to bytes
+                pdf_bytes = BytesIO()
+                doc.save(pdf_bytes)
+                doc.close()
+                
+                # Return as attachment
+                from fastapi.responses import Response
+                return Response(
+                    content=pdf_bytes.getvalue(),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+            except ImportError:
+                return JSONResponse(
+                    status_code=501,
+                    content={"success": False, "error": "PDF creation requires PyMuPDF library"}
+                )
+                
+        elif filename.endswith('.docx'):
+            # Create DOCX file
+            try:
+                import docx
+                from io import BytesIO
+                
+                # Create a new document with the translated content
+                doc = docx.Document()
+                doc.add_paragraph(content)
+                
+                # Save to bytes
+                docx_bytes = BytesIO()
+                doc.save(docx_bytes)
+                
+                # Return as attachment
+                from fastapi.responses import Response
+                return Response(
+                    content=docx_bytes.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+            except ImportError:
+                return JSONResponse(
+                    status_code=501,
+                    content={"success": False, "error": "DOCX creation requires python-docx library"}
+                )
+        
+        else:
+            # Fallback to text file
+            from fastapi.responses import Response
+            return Response(
+                content=content.encode('utf-8'),
+                media_type="text/plain",
+                headers={"Content-Disposition": f"attachment; filename={filename}.txt"}
+            )
+            
+    except Exception as e:
+        print(f"Error creating downloadable document: {str(e)}")
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": f"Failed to create document: {str(e)}"}
+        )
+
 # Initialize models during startup
 @app.on_event("startup")
 async def startup_event():

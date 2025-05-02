@@ -34,14 +34,15 @@ window.onload = function() {
     const sourceLangDoc = document.getElementById('source-lang-doc');
     const targetLangDoc = document.getElementById('target-lang-doc');
     
-    // Get quick phrases elements
-    const quickPhrasesContainer = document.getElementById('quick-phrases');
-    const quickPhraseButtons = document.querySelectorAll('.quick-phrase');
-    
     // Control buttons
-    const swapLangBtn = document.getElementById('swap-lang-btn');
-    const copyTextBtn = document.getElementById('copy-text-btn');
-    const clearTextBtn = document.getElementById('clear-text-btn');
+    const swapLanguages = document.getElementById('swap-languages');
+    const swapLanguagesDoc = document.getElementById('swap-languages-doc');
+    const copyTranslation = document.getElementById('copy-translation');
+    const copyDocTranslation = document.getElementById('copy-doc-translation');
+    const clearSource = document.getElementById('clear-source');
+    
+    // Get quick phrases elements
+    const phraseButtons = document.querySelectorAll('.phrase-btn');
     
     // RTL language handling - list of languages that use RTL
     const rtlLanguages = ['ar', 'he'];
@@ -50,16 +51,16 @@ window.onload = function() {
     if (textTabLink && docTabLink && textSection && docSection) {
         textTabLink.addEventListener('click', function(e) {
             e.preventDefault();
-            docSection.style.display = 'none';
-            textSection.style.display = 'block';
+            docSection.classList.add('hidden');
+            textSection.classList.remove('hidden');
             textTabLink.parentElement.classList.add('active');
             docTabLink.parentElement.classList.remove('active');
         });
         
         docTabLink.addEventListener('click', function(e) {
             e.preventDefault();
-            textSection.style.display = 'none';
-            docSection.style.display = 'block';
+            textSection.classList.add('hidden');
+            docSection.classList.remove('hidden');
             docTabLink.parentElement.classList.add('active');
             textTabLink.parentElement.classList.remove('active');
         });
@@ -69,7 +70,7 @@ window.onload = function() {
     if (textInput && charCountElement) {
         textInput.addEventListener('input', function() {
             const charCount = textInput.value.length;
-            charCountElement.textContent = `${charCount}`;
+            charCountElement.textContent = charCount;
             
             // Add warning class if approaching or exceeding character limit
             if (charCount > 3000) {
@@ -83,19 +84,24 @@ window.onload = function() {
     }
     
     // Quick phrases implementation
-    if (quickPhraseButtons && quickPhraseButtons.length > 0) {
-        quickPhraseButtons.forEach(button => {
+    if (phraseButtons && phraseButtons.length > 0) {
+        phraseButtons.forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
-                const phrase = this.getAttribute('data-phrase');
+                const phrase = this.getAttribute('data-text') || this.getAttribute('data-phrase');
                 
                 if (phrase && textInput) {
+                    // If not on the text tab, switch to it
+                    if (textSection.classList.contains('hidden')) {
+                        textTabLink.click();
+                    }
+                    
                     // Insert the phrase at cursor position, or append to end
                     if (typeof textInput.selectionStart === 'number') {
                         const startPos = textInput.selectionStart;
                         const endPos = textInput.selectionEnd;
                         const currentValue = textInput.value;
-                        const spaceChar = currentValue && currentValue[startPos - 1] !== ' ' ? ' ' : '';
+                        const spaceChar = currentValue && currentValue[startPos - 1] !== ' ' && startPos > 0 ? ' ' : '';
                         
                         // Insert phrase at cursor position with space if needed
                         textInput.value = currentValue.substring(0, startPos) + 
@@ -108,7 +114,7 @@ window.onload = function() {
                     } else {
                         // Fallback for browsers that don't support selection
                         const currentValue = textInput.value;
-                        const spaceChar = currentValue && currentValue[currentValue.length - 1] !== ' ' ? ' ' : '';
+                        const spaceChar = currentValue && currentValue.length > 0 && currentValue[currentValue.length - 1] !== ' ' ? ' ' : '';
                         textInput.value += spaceChar + phrase;
                     }
                     
@@ -118,14 +124,20 @@ window.onload = function() {
                     
                     // Focus back on the input
                     textInput.focus();
+                    
+                    // Auto translate if needed
+                    const autoTranslate = this.getAttribute('data-auto-translate') === 'true';
+                    if (autoTranslate && textTranslationForm) {
+                        textTranslationForm.dispatchEvent(new Event('submit'));
+                    }
                 }
             });
         });
     }
     
     // Language swap functionality
-    if (swapLangBtn && sourceLangText && targetLangText) {
-        swapLangBtn.addEventListener('click', function(e) {
+    if (swapLanguages && sourceLangText && targetLangText) {
+        swapLanguages.addEventListener('click', function(e) {
             e.preventDefault();
             
             // Don't swap if source is "auto" (language detection)
@@ -152,13 +164,35 @@ window.onload = function() {
                 textInput.dispatchEvent(inputEvent);
                 
                 // Trigger translation
-                const clickEvent = new Event('click');
-                document.querySelector('#translate-text-btn').dispatchEvent(clickEvent);
+                if (textTranslationForm) {
+                    textTranslationForm.dispatchEvent(new Event('submit'));
+                }
             }
             
             // Apply RTL styling as needed
             applyRtlStyling(sourceLangText.value, textInput);
             applyRtlStyling(targetLangText.value, textOutput);
+        });
+    }
+    
+    // Document language swap functionality
+    if (swapLanguagesDoc && sourceLangDoc && targetLangDoc) {
+        swapLanguagesDoc.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Don't swap if source is "auto" (language detection)
+            if (sourceLangDoc.value === 'auto') {
+                showNotification('Cannot swap when source language is set to auto-detect.');
+                return;
+            }
+            
+            // Store the current values
+            const sourceValue = sourceLangDoc.value;
+            const targetValue = targetLangDoc.value;
+            
+            // Swap the values
+            sourceLangDoc.value = targetValue;
+            targetLangDoc.value = sourceValue;
         });
     }
     
@@ -203,8 +237,8 @@ window.onload = function() {
     if (targetLangDoc) targetLangDoc.addEventListener('change', handleLanguageChange);
     
     // Copy translation to clipboard functionality
-    if (copyTextBtn) {
-        copyTextBtn.addEventListener('click', function() {
+    if (copyTranslation) {
+        copyTranslation.addEventListener('click', function() {
             if (textOutput && textOutput.textContent.trim() !== '') {
                 navigator.clipboard.writeText(textOutput.textContent)
                     .then(() => {
@@ -218,9 +252,25 @@ window.onload = function() {
         });
     }
     
+    // Copy document translation to clipboard
+    if (copyDocTranslation) {
+        copyDocTranslation.addEventListener('click', function() {
+            if (docOutput && docOutput.textContent.trim() !== '') {
+                navigator.clipboard.writeText(docOutput.textContent)
+                    .then(() => {
+                        showNotification('Document translation copied to clipboard!');
+                    })
+                    .catch(err => {
+                        console.error('Error copying document: ', err);
+                        showNotification('Failed to copy document. Please try again.');
+                    });
+            }
+        });
+    }
+    
     // Clear text functionality
-    if (clearTextBtn) {
-        clearTextBtn.addEventListener('click', function() {
+    if (clearSource) {
+        clearSource.addEventListener('click', function() {
             if (textInput) {
                 textInput.value = '';
                 textOutput.textContent = '';
@@ -231,6 +281,31 @@ window.onload = function() {
                 
                 // Focus back on the input
                 textInput.focus();
+            }
+        });
+    }
+    
+    // File input handler - Update UI when file is selected
+    const fileInput = document.getElementById('doc-input');
+    const translateDocumentBtn = document.querySelector('#doc-translation-form .translate-button');
+    
+    if (fileInput && fileNameDisplay && translateDocumentBtn) {
+        fileInput.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) {
+                const fileName = this.files[0].name;
+                fileNameDisplay.textContent = `File selected: ${fileName}`;
+                fileNameDisplay.style.display = 'block';
+                
+                // Make translate button colored
+                translateDocumentBtn.classList.add('active-button');
+                
+                showNotification('Document uploaded successfully!');
+            } else {
+                fileNameDisplay.textContent = '';
+                fileNameDisplay.style.display = 'none';
+                
+                // Make translate button transparent
+                translateDocumentBtn.classList.remove('active-button');
             }
         });
     }
@@ -260,7 +335,7 @@ window.onload = function() {
             
             const fileInput = document.getElementById('doc-input');
             if (!fileInput.files || fileInput.files.length === 0) {
-                showNotification('Please select a document to translate.');
+                showError('Please select a document to translate.');
                 return;
             }
             
@@ -273,12 +348,11 @@ window.onload = function() {
     }
     
     // File drag and drop 
-    const dropZone = document.getElementById('drop-zone');
-    const fileInput = document.getElementById('doc-input');
+    const fileUploadArea = document.querySelector('.file-upload-area');
     
-    if (dropZone && fileInput) {
+    if (fileUploadArea && fileInput) {
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
+            fileUploadArea.addEventListener(eventName, preventDefaults, false);
         });
         
         function preventDefaults(e) {
@@ -287,22 +361,22 @@ window.onload = function() {
         }
         
         ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, highlight, false);
+            fileUploadArea.addEventListener(eventName, highlight, false);
         });
         
         ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, unhighlight, false);
+            fileUploadArea.addEventListener(eventName, unhighlight, false);
         });
         
         function highlight() {
-            dropZone.classList.add('highlight');
+            fileUploadArea.classList.add('highlight');
         }
         
         function unhighlight() {
-            dropZone.classList.remove('highlight');
+            fileUploadArea.classList.remove('highlight');
         }
         
-        dropZone.addEventListener('drop', handleDrop, false);
+        fileUploadArea.addEventListener('drop', handleDrop, false);
         
         function handleDrop(e) {
             const dt = e.dataTransfer;
@@ -311,25 +385,17 @@ window.onload = function() {
             if (files && files.length > 0) {
                 fileInput.files = files;
                 const fileName = files[0].name;
-                fileNameDisplay.textContent = fileName;
+                fileNameDisplay.textContent = `File selected: ${fileName}`;
                 fileNameDisplay.style.display = 'block';
-                docFilename.value = fileName;
+                
+                // Make translate button colored
+                if (translateDocumentBtn) {
+                    translateDocumentBtn.classList.add('active-button');
+                }
+                
+                showNotification('Document uploaded successfully!');
             }
         }
-        
-        // Handle file selection through the input
-        fileInput.addEventListener('change', function() {
-            if (this.files && this.files.length > 0) {
-                const fileName = this.files[0].name;
-                fileNameDisplay.textContent = fileName;
-                fileNameDisplay.style.display = 'block';
-                docFilename.value = fileName;
-            } else {
-                fileNameDisplay.textContent = '';
-                fileNameDisplay.style.display = 'none';
-                docFilename.value = '';
-            }
-        });
     }
     
     // Text translation function
@@ -386,9 +452,6 @@ window.onload = function() {
             if (textOutput) {
                 textOutput.textContent = data.translated_text;
                 
-                // Enable copy button
-                if (copyTextBtn) copyTextBtn.disabled = false;
-                
                 // Apply RTL styling based on target language
                 applyRtlStyling(targetLang, textOutput);
             }
@@ -402,10 +465,7 @@ window.onload = function() {
             if (textLoadingIndicator) textLoadingIndicator.style.display = 'none';
             
             // Show error message
-            if (errorMessageElement) {
-                errorMessageElement.style.display = 'block';
-                errorMessageElement.textContent = `Translation error: ${error.message}`;
-            }
+            showError(`Translation error: ${error.message}`);
         });
     }
     
@@ -464,9 +524,34 @@ window.onload = function() {
                 docResult.classList.remove('hidden');
                 docResult.style.display = 'flex'; // Ensure the result is visible
             }
+            
             // Update filename and detected language
-            if (docFilename) docFilename.textContent = data.original_filename || '';
+            if (docFilename) docFilename.textContent = data.original_filename || file.name;
             if (docSourceLang) docSourceLang.textContent = (data.detected_source_lang ? getLanguageName(data.detected_source_lang) : getLanguageName(sourceLang));
+            
+            // Add download button
+            const resultArea = document.querySelector('.document-result-area');
+            if (resultArea) {
+                // Remove existing download button if there was one
+                const existingDownloadBtn = document.getElementById('download-translated-doc');
+                if (existingDownloadBtn) {
+                    existingDownloadBtn.remove();
+                }
+                
+                // Create download button
+                const downloadBtn = document.createElement('button');
+                downloadBtn.id = 'download-translated-doc';
+                downloadBtn.className = 'download-button';
+                downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download Translation';
+                
+                // Add event listener for download
+                downloadBtn.addEventListener('click', function() {
+                    downloadTranslatedDocument(data.translated_text, file.name, file.type);
+                });
+                
+                // Append to result area
+                resultArea.appendChild(downloadBtn);
+            }
         })
         .catch(error => {
             console.error('Error during document translation:', error);
@@ -474,11 +559,75 @@ window.onload = function() {
             if (docLoadingIndicator) docLoadingIndicator.style.display = 'none';
             
             // Show error message
-            if (errorMessageElement) {
-                errorMessageElement.style.display = 'block';
-                errorMessageElement.textContent = `Document translation error: ${error.message}`;
-            }
+            showError(`Document translation error: ${error.message}`);
         });
+    }
+    
+    // Function to download translated document
+    function downloadTranslatedDocument(content, fileName, fileType) {
+        // Determine the file extension
+        let extension = '';
+        if (fileName.endsWith('.pdf')) {
+            extension = '.pdf';
+        } else if (fileName.endsWith('.docx')) {
+            extension = '.docx';
+        } else if (fileName.endsWith('.txt')) {
+            extension = '.txt';
+        } else {
+            extension = '.txt'; // Default to txt
+        }
+        
+        // Create file name for translated document
+        const baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+        const translatedFileName = `${baseName}_translated${extension}`;
+        
+        // For simplicity, we'll handle text downloads here
+        // For PDF and DOCX, we would need server-side processing
+        if (extension === '.txt') {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = translatedFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } else {
+            // For non-text files, we need to request a download from the server
+            fetch('/download/translated-document', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    content: content,
+                    filename: translatedFileName,
+                    original_type: fileType
+                }),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to generate document for download');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = translatedFileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                console.error('Error downloading document:', error);
+                showError(`Download error: ${error.message}`);
+            });
+        }
     }
     
     // Helper function to get language name from code
@@ -528,6 +677,19 @@ window.onload = function() {
                     notificationElement.style.display = 'none';
                 }, 300);
             }, 3000);
+        }
+    }
+    
+    // Display error message
+    function showError(message) {
+        if (errorMessageElement) {
+            errorMessageElement.textContent = message;
+            errorMessageElement.style.display = 'block';
+            
+            // Hide after 5 seconds
+            setTimeout(() => {
+                errorMessageElement.style.display = 'none';
+            }, 5000);
         }
     }
     
