@@ -728,87 +728,105 @@ async def download_translated_document(request: Request):
         
         elif filename.endswith('.pdf'):
             try:
-                import fitz  # PyMuPDF
-                from io import BytesIO
-                
-                # Create a new PDF document
-                doc = fitz.open()
-                page = doc.new_page()
-                
-                # Check if text contains Arabic
-                has_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
-                
-                # Use a plain and simple approach that works across PyMuPDF versions
+                # For PDF files, let's use a very basic approach with a text-based fallback
+                # Try to create a simple PDF with reportlab, which should be available
                 try:
-                    font = "helv"  # Default PyMuPDF font with basic Unicode support
-                    rect = fitz.Rect(72, 72, page.rect.width - 72, page.rect.height - 72)
+                    from reportlab.pdfgen import canvas
+                    from reportlab.lib.pagesizes import letter
+                    from io import BytesIO
+                    from reportlab.pdfbase import pdfmetrics
+                    from reportlab.pdfbase.ttfonts import TTFont
+                    from reportlab.lib.colors import black
                     
-                    # Important: Break the content into shorter lines for better handling
+                    # Create a PDF in memory
+                    buffer = BytesIO()
+                    c = canvas.Canvas(buffer, pagesize=letter)
+                    
+                    # Try to register a font that supports Arabic
+                    try:
+                        # Try to use a system font that supports Arabic
+                        pdfmetrics.registerFont(TTFont('Arabic', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+                        font_name = 'Arabic'
+                    except:
+                        # Default to built-in Helvetica which has limited Arabic support
+                        font_name = 'Helvetica'
+                    
+                    # Set font 
+                    c.setFont(font_name, 12)
+                    
+                    # Check if text contains Arabic
+                    has_arabic = any('\u0600' <= ch <= '\u06FF' for ch in content)
+                    
+                    # Split text into lines
                     lines = content.split('\n')
-                    y_pos = 72  # Starting y position
+                    y_position = 750  # Start from top
                     
+                    # Draw text with proper handling for Arabic
                     for line in lines:
                         if line.strip():
-                            # Explicitly encode line as UTF-8 if it contains Arabic
-                            text_to_insert = line
+                            # For Arabic, we write from right to left
                             if has_arabic:
-                                # For Arabic text, position on right side of page
-                                page.insert_text(
-                                    point=(page.rect.width - 72, y_pos),  # Right-aligned position
-                                    text=text_to_insert,
-                                    fontname=font,
-                                    fontsize=11,
-                                    color=(0, 0, 0),  # Black text
-                                    rotate=0,
-                                    align=1  # Right alignment (1=right, 0=left, 2=center)
-                                )
+                                # Right-aligned text
+                                text_width = c.stringWidth(line, font_name, 12)
+                                c.drawString(letter[0] - 50 - text_width, y_position, line)
                             else:
-                                # For non-Arabic text
-                                page.insert_text(
-                                    point=(72, y_pos),
-                                    text=text_to_insert,
-                                    fontname=font,
-                                    fontsize=11
-                                )
-                        # Move to next line
-                        y_pos += 14  # Line spacing
+                                # Left-aligned text
+                                c.drawString(50, y_position, line)
+                            y_position -= 14
+                            
+                            # Add a new page if we reach the bottom
+                            if y_position < 50:
+                                c.showPage()
+                                y_position = 750
+                    
+                    c.save()
+                    
+                    # Get PDF content
+                    pdf_content = buffer.getvalue()
+                    buffer.close()
+                    
+                    # Return PDF
+                    return Response(
+                        content=pdf_content,
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": f"attachment; filename={filename}"}
+                    )
+                except ImportError:
+                    print("Reportlab not available, trying with PyMuPDF")
+                    import fitz  # PyMuPDF
+                    from io import BytesIO
+                    
+                    # Create a new PDF
+                    doc = fitz.open()
+                    page = doc.new_page()
+                    
+                    # Add text - keep it very simple
+                    page.insert_text((72, 72), content)
+                    
+                    # Save PDF
+                    pdf_bytes = BytesIO()
+                    doc.save(pdf_bytes)
+                    pdf_bytes.seek(0)
+                    doc.close()
+                    
+                    return Response(
+                        content=pdf_bytes.getvalue(),
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": f"attachment; filename={filename}"}
+                    )
+                    
                 except Exception as e:
-                    print(f"Error inserting text into PDF: {e}")
+                    print(f"PDF creation error: {str(e)}")
                     traceback.print_exc()
-                
-                # Save PDF to a BytesIO buffer
-                pdf_bytes = BytesIO()
-                doc.save(pdf_bytes)
-                pdf_bytes.seek(0)  # Important: Reset position to start of buffer
-                doc.close()
-                
-                # Log PDF size for debugging
-                pdf_size = len(pdf_bytes.getvalue())
-                print(f"Generated PDF size: {pdf_size} bytes")
-                
-                if pdf_size == 0:
-                    print("WARNING: Generated PDF has zero size!")
-                    # Return a plain text version as fallback
+                    # Fallback to text file
                     return Response(
                         content=content.encode('utf-8'),
-                        media_type="text/plain; charset=utf-8", 
+                        media_type="text/plain; charset=utf-8",
                         headers={
                             "Content-Disposition": f"attachment; filename={filename.replace('.pdf', '.txt')}",
                             "Content-Type": "text/plain; charset=utf-8"
                         }
                     )
-                
-                # Return PDF content
-                return Response(
-                    content=pdf_bytes.getvalue(),
-                    media_type="application/pdf",
-                    headers={"Content-Disposition": f"attachment; filename={filename}"}
-                )
-            except ImportError:
-                return JSONResponse(
-                    status_code=501,
-                    content={"success": False, "error": "PDF creation requires PyMuPDF library"}
-                )
             except Exception as e:
                 print(f"PDF creation error: {str(e)}")
                 traceback.print_exc()
