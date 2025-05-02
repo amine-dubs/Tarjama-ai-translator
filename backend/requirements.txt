@@ -14,3 +14,4 @@ tensorflow
 accelerate
 langdetect
 hf_xet
+reportlab # Added for PDF generation with Arabic support

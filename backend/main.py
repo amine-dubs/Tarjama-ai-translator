@@ -728,30 +728,21 @@ async def download_translated_document(request: Request):
         
         elif filename.endswith('.pdf'):
             try:
-                # For PDF files, let's use a very basic approach with a text-based fallback
-                # Try to create a simple PDF with reportlab, which should be available
+                # For PDF files, try multiple approaches
                 try:
+                    # Try ReportLab first (which handles Arabic better)
                     from reportlab.pdfgen import canvas
                     from reportlab.lib.pagesizes import letter
                     from io import BytesIO
-                    from reportlab.pdfbase import pdfmetrics
-                    from reportlab.pdfbase.ttfonts import TTFont
-                    from reportlab.lib.colors import black
+                    
+                    print("Using ReportLab for PDF generation")
                     
                     # Create a PDF in memory
                     buffer = BytesIO()
                     c = canvas.Canvas(buffer, pagesize=letter)
                     
-                    # Try to register a font that supports Arabic
-                    try:
-                        # Try to use a system font that supports Arabic
-                        pdfmetrics.registerFont(TTFont('Arabic', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
-                        font_name = 'Arabic'
-                    except:
-                        # Default to built-in Helvetica which has limited Arabic support
-                        font_name = 'Helvetica'
-                    
-                    # Set font 
+                    # Use a basic font that should work with most installations
+                    font_name = 'Helvetica'
                     c.setFont(font_name, 12)
                     
                     # Check if text contains Arabic
@@ -761,64 +752,154 @@ async def download_translated_document(request: Request):
                     lines = content.split('\n')
                     y_position = 750  # Start from top
                     
-                    # Draw text with proper handling for Arabic
+                    # Draw text line by line
                     for line in lines:
                         if line.strip():
-                            # For Arabic, we write from right to left
+                            # For Arabic, right-align the text
                             if has_arabic:
-                                # Right-aligned text
+                                # Get width to calculate right alignment
                                 text_width = c.stringWidth(line, font_name, 12)
-                                c.drawString(letter[0] - 50 - text_width, y_position, line)
+                                # Position from right margin
+                                c.drawString(letter[0] - 72 - text_width, y_position, line)
                             else:
-                                # Left-aligned text
-                                c.drawString(50, y_position, line)
+                                # Left-align for non-Arabic text
+                                c.drawString(72, y_position, line)
+                            
+                            # Move down for next line
                             y_position -= 14
                             
-                            # Add a new page if we reach the bottom
-                            if y_position < 50:
+                            # Add a new page if needed
+                            if y_position < 72:
                                 c.showPage()
+                                c.setFont(font_name, 12)
                                 y_position = 750
                     
+                    # Save the PDF to the buffer
                     c.save()
                     
                     # Get PDF content
                     pdf_content = buffer.getvalue()
                     buffer.close()
                     
-                    # Return PDF
+                    # Return the PDF
                     return Response(
                         content=pdf_content,
                         media_type="application/pdf",
                         headers={"Content-Disposition": f"attachment; filename={filename}"}
                     )
+                    
                 except ImportError:
-                    print("Reportlab not available, trying with PyMuPDF")
-                    import fitz  # PyMuPDF
+                    # Fall back to PyMuPDF with improved approach for Arabic
+                    print("ReportLab not available, using PyMuPDF with improved Arabic handling")
+                    import fitz
                     from io import BytesIO
+                    import uuid
+                    import os
+                    import tempfile
                     
-                    # Create a new PDF
-                    doc = fitz.open()
-                    page = doc.new_page()
+                    # For PyMuPDF, we'll take a different approach for Arabic text:
+                    # 1. Create a temporary HTML file with the Arabic text and proper RTL styling
+                    # 2. Convert it to PDF using PyMuPDF's HTML parser
                     
-                    # Add text - keep it very simple
-                    page.insert_text((72, 72), content)
+                    # Determine if we have Arabic text
+                    has_arabic = any('\u0600' <= ch <= '\u06FF' for ch in content)
                     
-                    # Save PDF
-                    pdf_bytes = BytesIO()
-                    doc.save(pdf_bytes)
-                    pdf_bytes.seek(0)
-                    doc.close()
-                    
-                    return Response(
-                        content=pdf_bytes.getvalue(),
-                        media_type="application/pdf",
-                        headers={"Content-Disposition": f"attachment; filename={filename}"}
-                    )
-                    
+                    if has_arabic:
+                        # Create a temporary HTML file with RTL direction for Arabic
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w', encoding='utf-8') as temp_file:
+                            html_content = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>Translated Document</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            direction: rtl;
+            text-align: right;
+            margin: 1.5cm;
+            font-size: 12pt;
+            line-height: 1.5;
+        }}
+    </style>
+</head>
+<body>
+{content.replace('\n', '<br>')}
+</body>
+</html>"""
+                            temp_file.write(html_content)
+                            temp_html_path = temp_file.name
+                        
+                        try:
+                            # Convert HTML to PDF
+                            doc = fitz.open()
+                            
+                            # Load the HTML file as a separate document and insert it
+                            html_doc = fitz.open(temp_html_path)
+                            doc.insert_pdf(html_doc)
+                            html_doc.close()
+                            
+                            # Save to memory
+                            pdf_bytes = BytesIO()
+                            doc.save(pdf_bytes)
+                            doc.close()
+                            
+                            # Clean up temporary file
+                            try:
+                                os.unlink(temp_html_path)
+                            except:
+                                pass
+                                
+                            # Return the PDF
+                            return Response(
+                                content=pdf_bytes.getvalue(),
+                                media_type="application/pdf",
+                                headers={"Content-Disposition": f"attachment; filename={filename}"}
+                            )
+                        except Exception as html_err:
+                            print(f"HTML conversion failed: {html_err}")
+                            # Clean up temp file if it exists
+                            try:
+                                os.unlink(temp_html_path)
+                            except:
+                                pass
+                            
+                            # Fall back to text file since all PDF attempts failed
+                            return Response(
+                                content=content.encode('utf-8'),
+                                media_type="text/plain; charset=utf-8",
+                                headers={
+                                    "Content-Disposition": f"attachment; filename={filename.replace('.pdf', '.txt')}",
+                                    "Content-Type": "text/plain; charset=utf-8"
+                                }
+                            )
+                    else:
+                        # For non-Arabic text, use the simpler PDF creation method
+                        doc = fitz.open()
+                        page = doc.new_page()
+                        
+                        # Add text content
+                        rect = fitz.Rect(72, 72, page.rect.width-72, page.rect.height-72)
+                        page.insert_text((72, 72), content, fontsize=11)
+                        
+                        # Save to memory
+                        pdf_bytes = BytesIO()
+                        doc.save(pdf_bytes)
+                        pdf_bytes.seek(0)
+                        doc.close()
+                        
+                        # Return the PDF
+                        return Response(
+                            content=pdf_bytes.getvalue(),
+                            media_type="application/pdf",
+                            headers={"Content-Disposition": f"attachment; filename={filename}"}
+                        )
+                
                 except Exception as e:
-                    print(f"PDF creation error: {str(e)}")
+                    print(f"PDF creation error with advanced methods: {e}")
                     traceback.print_exc()
-                    # Fallback to text file
+                    
+                    # Fall back to text file if all PDF attempts fail
                     return Response(
                         content=content.encode('utf-8'),
                         media_type="text/plain; charset=utf-8",
@@ -827,8 +908,9 @@ async def download_translated_document(request: Request):
                             "Content-Type": "text/plain; charset=utf-8"
                         }
                     )
+                    
             except Exception as e:
-                print(f"PDF creation error: {str(e)}")
+                print(f"Overall PDF creation error: {e}")
                 traceback.print_exc()
                 # Return a text file as fallback
                 return Response(
