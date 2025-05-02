@@ -44,22 +44,36 @@ window.onload = function() {
         if (errorElement) errorElement.style.display = 'none';
         if (debugElement) debugElement.style.display = 'none';
         
-        // **Crucial Check:** Verify elements still exist before use
-        if (!textInput || !sourceLangText || !targetLangText) {
-             console.error('ERROR: Text form elements became null before accessing value!');
-             showError('Internal error: Form elements missing unexpectedly.');
-             return;
+        // --- CRITICAL RE-FETCH AND CHECK ---
+        // Re-fetch the element *right before* using it inside the handler
+        const currentTextInput = document.getElementById('text-input');
+        console.log('Re-fetched #text-input inside handler:', currentTextInput);
+        
+        // Check if it's null *immediately* before accessing .value
+        if (!currentTextInput) {
+            console.error('FATAL: document.getElementById(\'text-input\') returned null INSIDE the submit handler!');
+            showError('Internal error: Text input element disappeared unexpectedly. Check console.');
+            return; // Stop execution
         }
+        // --- END CRITICAL CHECK ---
         
         // Get values
-        const text = textInput.value ? textInput.value.trim() : '';
+        // Use the locally fetched element reference
+        const text = currentTextInput.value ? currentTextInput.value.trim() : ''; 
         if (!text) {
             showError('Please enter text to translate');
             return;
         }
         
-        const sourceLangValue = sourceLangText.value;
-        const targetLangValue = targetLangText.value;
+        // Fetch other elements needed here (can also use stored references if they are reliable)
+        const sourceLangValue = sourceLangText ? sourceLangText.value : null;
+        const targetLangValue = targetLangText ? targetLangText.value : null;
+
+        if (!sourceLangValue || !targetLangValue) {
+            console.error('Source or Target language select element is null inside handler!');
+            showError('Internal error: Language select element missing.');
+            return;
+        }
         
         // Show loading indicator
         if (textLoadingElement) textLoadingElement.style.display = 'block';
