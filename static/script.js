@@ -6,35 +6,25 @@ window.onload = function() {
     const textTranslationForm = document.querySelector('#text-translation-form');
     const docTranslationForm = document.querySelector('#doc-translation-form');
     
-    // Get text form INPUT elements ONCE
-    const textInput = document.getElementById('text-input');
-    const sourceLangText = document.getElementById('source-lang-text');
-    const targetLangText = document.getElementById('target-lang-text');
+    // Get text form OUTPUT elements ONCE
     const textLoadingElement = document.getElementById('text-loading');
     const debugElement = document.getElementById('debug-info');
     const errorElement = document.getElementById('error-message');
     const textResultBox = document.getElementById('text-result');
     const textOutputElement = document.getElementById('text-output');
 
-    // Check if essential text elements were found on load
-    if (!textTranslationForm || !textInput || !sourceLangText || !targetLangText) {
-        console.error('CRITICAL: Essential text form elements not found on window load!', {
-            form: !!textTranslationForm,
-            input: !!textInput,
-            source: !!sourceLangText,
-            target: !!targetLangText
-        });
+    // Check if essential text elements were found on load (excluding inputs used via FormData)
+    if (!textTranslationForm) { // Only check form itself now
+        console.error('CRITICAL: Text translation form not found on window load!');
         if (errorElement) {
-            errorElement.textContent = 'Error: Could not find essential text translation form elements. Check HTML IDs.';
+            errorElement.textContent = 'Error: Could not find the text translation form element. Check HTML ID.';
             errorElement.style.display = 'block';
         }
-        // Optionally disable the form if elements are missing
-        if (textTranslationForm) textTranslationForm.style.opacity = '0.5'; 
-        return; // Stop further initialization if critical elements missing
+        return; 
     }
     
     // Set up text translation form
-    console.log('Text translation form and elements found on load');
+    console.log('Text translation form found on load');
     textTranslationForm.addEventListener('submit', function(event) {
         event.preventDefault();
         console.log('Text translation form submitted');
@@ -44,53 +34,25 @@ window.onload = function() {
         if (errorElement) errorElement.style.display = 'none';
         if (debugElement) debugElement.style.display = 'none';
         
-        // --- FINAL DEFENSIVE CHECK using variable captured onload ---
-        console.log('[DEBUG] Checking textInput variable captured onload:', textInput);
-
-        if (!textInput) {
-            // This should ideally not happen if the check on load passed
-            console.error('FATAL: textInput variable (captured onload) is null INSIDE handler.');
-            showError('Internal error: Text input reference lost.');
-            return;
-        } else {
-            console.log('[DEBUG] textInput variable IS NOT NULL. Type:', typeof textInput);
-            let inputValue = null;
-
-            try {
-                console.log('[DEBUG] Attempting to access .value from textInput variable...');
-                inputValue = textInput.value; // Potential error point (Line 65 approx)
-                console.log('[DEBUG] Accessed .value successfully. Raw Value:', inputValue);
-            } catch (e) {
-                // This catch block should now definitively catch the error if it happens during value access
-                console.error('FATAL: Error occurred accessing .value from textInput variable:', e);
-                console.error('[DEBUG] textInput variable state just before error:', textInput);
-                 try {
-                     // Attempt to log outerHTML for more context if possible
-                     console.error('[DEBUG] Element outerHTML at time of error:', textInput.outerHTML);
-                 } catch (htmlError) {
-                     console.error('[DEBUG] Could not get outerHTML:', htmlError);
-                 }
-                showError('Internal error: Failed to read text input value. Check console.');
-                return; // Stop execution
-            }
-
-            // Now use the stored value
-            const text = inputValue ? inputValue.trim() : '';
-            console.log('[DEBUG] Trimmed text value:', text);
-            // --- END FINAL DEFENSIVE CHECK ---
+        // --- Use FormData Approach --- 
+        try {
+            const formData = new FormData(event.target); // event.target is the form
+            
+            // Get values using the 'name' attributes from the HTML
+            const text = formData.get('text') ? formData.get('text').trim() : '';
+            const sourceLangValue = formData.get('source_lang');
+            const targetLangValue = formData.get('target_lang');
+            
+            console.log('[DEBUG] FormData values - Text:', text, 'Source:', sourceLangValue, 'Target:', targetLangValue);
 
             if (!text) {
                 showError('Please enter text to translate');
                 return;
             }
             
-            // Fetch other elements needed here
-            const sourceLangValue = sourceLangText ? sourceLangText.value : null;
-            const targetLangValue = targetLangText ? targetLangText.value : null;
-
             if (!sourceLangValue || !targetLangValue) {
-                console.error('Source or Target language select element is null inside handler!');
-                showError('Internal error: Language select element missing.');
+                console.error('Could not read language values from FormData!');
+                showError('Internal error: Language selection missing.');
                 return;
             }
             
@@ -143,7 +105,12 @@ window.onload = function() {
             .finally(() => {
                 if (textLoadingElement) textLoadingElement.style.display = 'none';
             });
+
+        } catch (e) {
+            console.error('FATAL: Error processing form data or submitting:', e);
+            showError('Internal error processing form submission. Check console.');
         }
+        // --- End FormData Approach ---
     });
     
     // Document translation handler
