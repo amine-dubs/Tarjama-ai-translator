@@ -733,7 +733,21 @@ async def download_translated_document(request: Request):
                 
                 # Insert text into the PDF
                 text_rect = fitz.Rect(50, 50, page.rect.width - 50, page.rect.height - 50)
-                page.insert_text(text_rect.tl, content, fontsize=11)
+                
+                # Check if content contains Arabic text
+                has_arabic = any('\u0600' <= c <= '\u06FF' for c in content)
+                
+                # Use write_text with an appropriate font for Arabic support
+                # and set right-to-left direction for Arabic text
+                page.write_text(
+                    text_rect,
+                    content,
+                    fontsize=11,
+                    font="helv" if not has_arabic else "noto",  # Use Noto font for Arabic
+                    fontfile="NotoSansArabic-Regular.ttf" if has_arabic else None,
+                    align="right" if has_arabic else "left",
+                    direction="rtl" if has_arabic else "ltr"
+                )
                 
                 # Save to bytes
                 pdf_bytes = BytesIO()
