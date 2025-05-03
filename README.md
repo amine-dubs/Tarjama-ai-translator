@@ -7,5 +7,5 @@ sdk: docker
 app_port: 8000 # Added required port for Docker SDK
 pinned: false
 ---
-
+App link: https://huggingface.co/spaces/AmineDubs/Scripts_translation_to_arabic
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
